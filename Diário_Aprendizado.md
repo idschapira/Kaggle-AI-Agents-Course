@@ -31,24 +31,35 @@
 
 ---
 
-## Dia 1 — *(a iniciar)*
+## Dia 1 — Criar app no Google AI Studio e Deploy no Cloud Run
 
-**Data:**
+**Data:** 2026-06-16
 
-**Objetivo da tarefa:**
+**Objetivo da tarefa:** Construir um app simples usando o Google AI Studio (integrado ao Gemini) e publicá-lo via Cloud Run, depois versionar o código no GitHub.
 
 **O que foi feito:**
+- Criado o app **PokéAsset Manager** (portfólio de cards Pokémon) no Google AI Studio, usando o SDK `@google/genai` para chamadas ao Gemini.
+- Deploy feito direto pelo AI Studio no **Cloud Run**: https://pokeasset-manager-126303862772.us-east1.run.app/
+- Exportado o código-fonte (.zip) do AI Studio e organizado em `apps/dia1_pokeasset_manager/` no repositório.
+- Atualizado `.gitignore` para ignorar `node_modules/`, `dist/`, `build/` e os `.zip` de export.
+- Confirmado que `.env.example` só contém placeholders (sem chaves reais expostas).
 
 **Conceitos novos:**
+- **Google AI Studio:** ambiente da Google para prototipar apps com modelos Gemini, com deploy integrado.
+- **Cloud Run:** serviço da Google Cloud que executa containers sem precisar gerenciar servidores (serverless).
+- **Export/Download (AI Studio):** gera o código-fonte do app (separado do link público já publicado).
+- **Stack do app:** React + Vite + TypeScript, com `@google/genai` como SDK de IA.
 
 **Glossário do dia:**
+- **Deploy:** publicar uma versão do app para que fique acessível publicamente.
+- **Serverless:** modelo de execução em que a infraestrutura (servidores) é gerenciada automaticamente pelo provedor de nuvem.
+- **SDK:** conjunto de ferramentas/bibliotecas que facilita a integração com uma API (aqui, a API do Gemini).
+- **.env / variáveis de ambiente:** arquivo usado para guardar segredos (como API Keys) fora do código-fonte.
 
 ---
 
-## Dia 2 — *(a iniciar)*
+## Dia 2 — Agent Tools & Interoperability + Antigravity CLI + MCP Server
 
-## Dia 3 — *(a iniciar)*
+**Data:** 2026-06-16
 
-## Dia 4 — *(a iniciar)*
-
-## Dia 5 — *(a iniciar)*
+**Objetivo da

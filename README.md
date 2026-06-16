@@ -6,6 +6,7 @@ Repositório de estudos do curso **5-Day AI Agents** (Kaggle), com foco em funda
 
 ```
 .
+├── apps/           # Apps criados no Google AI Studio (código exportado)
 ├── notebooks/      # Jupyter notebooks com exercícios e experimentos
 ├── data/
 │   ├── raw/        # Dados originais, não tratados

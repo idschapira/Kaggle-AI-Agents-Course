@@ -18,3 +18,11 @@ data/processed/*
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Node (apps React/Vite do AI Studio)
+node_modules/
+dist/
+build/
+
+# Zips de export do AI Studio (mantemos só o código extraído)
+apps/**/*.zip

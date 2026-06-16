@@ -1,0 +1,8 @@
+{
+  "name": "PokeAsset Manager",
+  "description": "Pokemon TCG portfolio manager and asset tracking database with interactive console",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
