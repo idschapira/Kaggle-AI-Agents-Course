@@ -81,9 +81,10 @@
 - Obtida a API key da **PokeWallet API** (https://api.pokewallet.io) e lida a documentação completa: autenticação via header `X-API-Key`, endpoint `GET /search?q=...` retorna `tcgplayer.prices[].market_price` e `cardmarket.prices[].avg`, limite gratuito de 100 req/hora e 1.000 req/dia.
 - Desenhada a arquitetura segura: rota proxy no backend Express (`GET /api/pokewallet/price?q=`) que guarda a `POKEWALLET_API_KEY` só no `.env` do servidor — o frontend nunca toca na chave.
 - Prompt de implementação preparado para o Antigravity CLI, mas sessão bloqueada pela cota gratuita do modelo padrão (Gemini Pro) ter esgotado.
-- Tentativa de troca de modelo via `agy model "Claude Sonnet 4.6 (Thinking)"` não funcionou (comando não reconhecido/erro) — a investigar na próxima sessão.
+- Tentativa de troca de modelo via comando interno `agy model "Claude Sonnet 4.6 (Thinking)"` não funcionou (comando não reconhecido/erro).
+- **Correção encontrada:** a troca de modelo é feita como **flag na inicialização** do CLI, não como comando dentro da sessão: `agy --model "Claude Sonnet 4.6 (Thinking)"`.
 
-**Status:** Implementação da integração com PokeWallet ainda não iniciada (apenas planejada). Pendência técnica: resolver a troca de modelo no Antigravity CLI antes de rodar o prompt da rota proxy.
+**Status:** Implementação da integração com PokeWallet ainda não iniciada (apenas planejada). Resolvido: forma correta de trocar de modelo no Antigravity CLI (`agy --model "..."`). Próxima sessão: rodar o prompt da rota proxy com esse comando.
 
 **Conceitos novos:**
 - **MCP (Model Context Protocol):** "USB-C" do agente — conecta um agente a ferramentas externas (arquivos, APIs, bancos de dados) de forma padronizada, evitando integrações sob medida para cada par modelo↔ferramenta (problema NxM).
