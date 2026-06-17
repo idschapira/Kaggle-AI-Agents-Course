@@ -62,4 +62,48 @@
 
 **Data:** 2026-06-16
 
-**Objetivo da
+**Objetivo da tarefa:** Ler o whitepaper "Agent Tools & Interoperability" e completar dois codelabs práticos: instalar/usar o **Antigravity CLI** e conectar o **Google Developer Knowledge MCP server**.
+
+**O que foi feito:**
+- Lido o whitepaper *Agent Tools & Interoperability* (Kaggle, Dia 2): conceitos de MCP (consumo de servidores, descoberta/configuração/conexão, problema NxM, debugging), A2A (Agent-to-Agent), Agent Card, e visão geral de A2UI/AP2/UCP.
+- Instalado o **Antigravity CLI** (`agy`, versão 1.0.8) via PowerShell, em `apps/agy-cli-projects/`.
+- Login feito via Google OAuth; aceitos termos de serviço e permissão de confiança na pasta de trabalho.
+- Exploradas configurações (`/config`): Tool Permission, modelos disponíveis (`agy models`), troca de modelo (`agy model "..."`).
+- Testado o modo `--dangerously-skip-permissions` (autoaprova todas as ações) comparado ao modo padrão `request-review` (pede aprovação a cada ação) — lição prática de segurança/HITL.
+- Criado projeto novo no Google Cloud (`kaggle-dia2-mcp`), habilitada a **Developer Knowledge API**, criada e restringida uma API key.
+- Configurado o servidor MCP `google-developer-knowledge` em `~/.gemini/config/mcp_config.json`.
+- Validada a conexão via `/mcp` no Antigravity CLI e testado com um prompt real (`Based on the Google Developer Knowledge, does Google Workspace support MCP servers?`), aprovando a permissão de uso da ferramenta na primeira chamada.
+
+**Próximos passos (fora do escopo oficial do Dia 2, aplicação prática planejada):**
+- Usar o Antigravity CLI (vibe coding) para implementar melhorias no PokéAsset Manager (Dia 1): fotos reais dos cards, tracker de preços, login de usuários.
+
+**Sessão de aplicação prática (2026-06-17):**
+- Obtida a API key da **PokeWallet API** (https://api.pokewallet.io) e lida a documentação completa: autenticação via header `X-API-Key`, endpoint `GET /search?q=...` retorna `tcgplayer.prices[].market_price` e `cardmarket.prices[].avg`, limite gratuito de 100 req/hora e 1.000 req/dia.
+- Desenhada a arquitetura segura: rota proxy no backend Express (`GET /api/pokewallet/price?q=`) que guarda a `POKEWALLET_API_KEY` só no `.env` do servidor — o frontend nunca toca na chave.
+- Prompt de implementação preparado para o Antigravity CLI, mas sessão bloqueada pela cota gratuita do modelo padrão (Gemini Pro) ter esgotado.
+- Tentativa de troca de modelo via `agy model "Claude Sonnet 4.6 (Thinking)"` não funcionou (comando não reconhecido/erro) — a investigar na próxima sessão.
+
+**Status:** Implementação da integração com PokeWallet ainda não iniciada (apenas planejada). Pendência técnica: resolver a troca de modelo no Antigravity CLI antes de rodar o prompt da rota proxy.
+
+**Conceitos novos:**
+- **MCP (Model Context Protocol):** "USB-C" do agente — conecta um agente a ferramentas externas (arquivos, APIs, bancos de dados) de forma padronizada, evitando integrações sob medida para cada par modelo↔ferramenta (problema NxM).
+- **A2A (Agent-to-Agent):** protocolo para um agente delegar tarefas a outro agente especialista, permitindo que o agente pause, negocie e retome (diferente de uma chamada de tool simples e definitiva).
+- **Agent Card:** "currículo" machine-readable de um agente A2A — descreve capacidades, políticas de segurança e como se comunicar com ele.
+- **Antigravity CLI ("agy"):** ferramenta de terminal do Google para programar com um agente de IA ("vibe coding"), com recursos de raciocínio multi-etapas, edição multi-arquivo e histórico de conversa.
+- **Tool Permission (request-review vs. --dangerously-skip-permissions):** controla se o agente pede aprovação antes de executar ações que alteram arquivos/sistema.
+
+**Glossário do dia:**
+- **NxM problem:** sem um protocolo padrão, conectar N modelos a M ferramentas exige N×M integrações sob medida; com MCP, o esforço cai para N+M.
+- **HITL (Human-in-the-loop):** prática de manter um humano aprovando ações sensíveis do agente antes de executarem.
+- **Registry (de MCP ou de Agentes):** catálogo onde servidores MCP ou agentes A2A ficam disponíveis para descoberta (público, de terceiros vetados, ou interno da empresa).
+- **stdio / SSE:** dois transportes usados por servidores MCP — stdio roda local como subprocesso; SSE conecta a um endpoint remoto via streaming HTTP.
+
+**Status:** Conteúdo oficial do Dia 2 concluído (whitepaper lido, 2 codelabs feitos). Aplicação prática no PokéAsset Manager planejada como próxima etapa.
+
+---
+
+## Dia 3 — *(a iniciar)*
+
+## Dia 4 — *(a iniciar)*
+
+## Dia 5 — *(a iniciar)*
