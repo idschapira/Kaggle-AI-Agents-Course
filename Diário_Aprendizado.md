@@ -7,6 +7,9 @@
 - **Aluno:** Ilan (MBA em curso)
 - **Objetivo:** Aprender conceitos de AI Agents e Engenharia de Dados na prática, documentando tudo aqui e versionando no GitHub.
 
+**Recursos do curso:**
+- Playlist das lives (YouTube): https://www.youtube.com/playlist?list=PLqFaTIg4myu8AFXUjrVhDkUGp0A9kK8CX
+
 ---
 
 ## Dia 0 — Setup do Ambiente
@@ -103,7 +106,35 @@
 
 ---
 
-## Dia 3 — *(a iniciar)*
+## Dia 3 — Agent Skills
+
+**Data:** 2026-06-17
+
+**Objetivo da tarefa:** Assistir à live/vídeo-resumo do Dia 3, ler o whitepaper *Agent Skills* e discutir os conceitos centrais via Q&A antes de avançar para os codelabs práticos.
+
+**O que foi feito:**
+- Whitepaper *Agent Skills* (Kaggle, Dia 3) anexado ao projeto e lido.
+- Vídeo-resumo assistido; destaque pessoal: o "princípio das 8 tentativas consecutivas" (uma skill só deve ser confiável se acertar repetidamente, não só uma vez — ligado à queda real de 20-30% entre pass@1 de benchmark e produção, citada no whitepaper).
+- Sessão de Q&A sobre o whitepaper, cobrindo:
+  1. Por que "rodou sem erro uma vez" não é suficiente para validar uma Skill (pode ser sorte; precisa de repetição/consistência).
+  2. Por que triggers precisam de exemplos positivos **e** negativos (evita falsos positivos por descrição vaga).
+  3. O teste prático "se não dá pra escrever 3 casos de teste, a skill está mal definida ou faz coisa demais" — aplicado ao PokéAsset Manager: chamada de API de preço (fácil, determinística) vs. identificar exatamente qual Pokémon/condição (difícil, julgamento subjetivo → precisa de revisão humana).
+
+**Conceitos novos:**
+- **Agent Skill:** unidade leve e portátil de capacidade (pasta com `SKILL.md` + scripts opcionais) que ensina um agente a executar uma tarefa específica de forma repetível.
+- **Trigger (gatilho da skill):** a descrição que faz o agente decidir quando usar a skill; precisa de casos de teste positivos e negativos para ser precisa.
+- **Pass@1 vs. confiabilidade em produção:** taxa de acerto isolada em benchmark tende a cair 20-30% no uso real — por isso testar repetidamente (ex.: "8 tentativas consecutivas") é mais confiável do que um teste único.
+- **Tiers de skill (read-only vs. action-allowed):** o nível de risco da skill (só ler dados vs. executar ações) muda o rigor de validação necessário.
+
+**Glossário do dia:**
+- **Eval-as-Unit-Test:** padrão de testar uma skill como se fosse um teste de unidade de código — roda automaticamente e bloqueia merge se falhar.
+- **Trajectory testing:** validar não só a resposta final do agente, mas o caminho/ferramentas que ele usou para chegar lá.
+- **Reviewer & Gate:** verificação automática (determinística) que bloqueia a execução se a validação falhar, em vez de depender só do julgamento do modelo.
+- **SKILL.md:** arquivo principal de uma Agent Skill, com frontmatter (metadados) e instruções/descrição de uso.
+
+**Status:** Q&A do whitepaper concluído. Próximo passo: codelabs práticos do Dia 3.
+
+---
 
 ## Dia 4 — *(a iniciar)*
 
