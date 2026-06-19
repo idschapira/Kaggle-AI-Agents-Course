@@ -169,8 +169,35 @@
 - **Escopo de skill (projeto vs. global):** skills podem viver na raiz do projeto (`.agent/skills/`, versionável no Git) ou em pasta global do usuário (`~/.gemini/...`, compartilhada entre todos os projetos).
 - **Erro 403 PERMISSION_DENIED vs. 503 UNAVAILABLE:** o 403 indica problema de configuração/permissão (ex.: API desabilitada no projeto da chave) — corrigível pelo usuário; o 503 indica sobrecarga temporária do servidor do provedor (Google) — não é erro de configuração, só tentar novamente depois.
 
-**Codelab 2 do Dia 3 (ainda não iniciado):**
-- [Vibe Coding AI Agents: Managing the Agent Lifecycle with Agents CLI and ADK 2.0](https://codelabs.developers.google.com/agents-cli-adk-lifecycle) — próxima etapa após fechar o Codelab 1.
+**Sessão de aplicação prática — Codelab 2: Vibe Coding AI Agents (Agents CLI & ADK 2.0 Lifecycle) — 2026-06-19:**
+- Codelab: [Vibe Coding AI Agents: Managing the Agent Lifecycle with Agents CLI and ADK 2.0](https://codelabs.developers.google.com/agents-cli-adk-lifecycle).
+- Autenticação (Seção 2): reaproveitado o login do `agents-cli` do Codelab 1, mas descoberto que a variável `GEMINI_API_KEY` precisa ser **exportada de novo a cada terminal novo** (não persiste como o login da CLI). No Windows isso é `$env:GEMINI_API_KEY="..."` (PowerShell) — `export` é sintaxe de bash/Git Bash, não funciona direto no PowerShell.
+- Projeto `customer-support-agent` criado (Seção 4) via prompt em linguagem natural pro Antigravity, que rodou `agents-cli scaffold create ... --prototype --yes` por trás. Confirmado: o prompt deve ser dado ao **agente do chat do IDE**, não digitado direto no terminal — é esse agente que decide e executa o comando.
+- Seção 5 (explicar a estrutura do código): como a cota do Antigravity esgotou no meio da sessão, a explicação do `app/agent.py` (workflow, nodes LlmAgent, FunctionNode, edges condicionais) foi feita diretamente comigo (Claude), lendo o arquivo real do projeto — sem depender de cota de IA nenhuma, já que é só leitura/explicação.
+- **Bug real encontrado e corrigido na Seção 4/6 (lint):** o código gerado pelo Antigravity usava a sintaxe de exemplo do codelab (`Edge` com tupla de 3 elementos e `Event(route=...)`), mas a versão instalada do `google-adk` (2.3.0) mudou a API:
+  1. `Edge` precisa ser instanciado explicitamente: `Edge(from_node=..., to_node=..., route="...")`, não uma tupla solta.
+  2. `route` não é um campo direto de `Event` — fica dentro de `Event.actions`, um objeto `EventActions`: `Event(output=..., actions=EventActions(route=route))`.
+  - **Lição:** isso é "API drift" — o material didático foi escrito pra uma versão da lib, mas o `uv`/`pip` instalou uma mais nova com interface diferente. Comum no ecossistema de IA agents, que evolui rápido.
+- **Bug de infraestrutura encontrado durante a correção:** uma edição de arquivo deixou bytes nulos (`\x00`) sobrando no final do `agent.py`, quebrando o parser do `ruff`/`ty` com erros de sintaxe confusos ("unexpected token"). Resolvido removendo os bytes nulos do final do arquivo (`data.rstrip(b'\x00')`).
+- Lint (Seção 6) validado no final: `ruff check`, `ruff format --check`, `ty check` e `codespell` todos passando, confirmado tanto pela checagem direta quanto pelo `agents-cli lint` do usuário.
+- **Cota do Gemini esgotada (`429 RESOURCE_EXHAUSTED`, `limit: 0`) no modelo `gemini-2.0-flash`** usado por padrão no scaffold — não era um limite temporário, e sim esse modelo específico **não tendo cota gratuita habilitada** para o projeto da chave (confirmado consultando o painel de cotas do AI Studio: "Gemini 2 Flash" aparecia como 0/0). **Correção:** trocados os dois `LlmAgent` (`classifier` e `shipping_faq`) para `gemini-3.1-flash-lite` — modelo com a maior cota gratuita disponível (15 RPM / 500 RPD) e que é, coincidentemente, o modelo padrão sugerido no próprio texto do codelab.
+- **Lição de cota:** a cota gratuita do Gemini é rastreada **por modelo**, não globalmente — um modelo esgotado/sem cota não significa que a chave está "bloqueada"; outros modelos podem estar livres.
+- Seção 7 (Playground) testada com sucesso: pergunta de frete (`"How much is standard shipping?"`) roteou corretamente para `shipping_faq`; pergunta não relacionada (`"What is the weather like?"`) roteou para `decline`. Teste de auto-reload (editar a instrução do `shipping_faq` pra ficar com emojis e destacar o pickup gratuito) foi inconclusivo, pois o usuário recarregou a página antes de testar sem reiniciar o servidor — mas o conteúdo novo funcionou após o reload. Fica em aberto se o `--reload` funciona no Windows pra esse projeto (no Dia 3/Codelab 1 já tinha sido observado que `adk web --reload` é desabilitado automaticamente no Windows).
+- Seção 8 (CLI) testada com sucesso usando o comando direto (sem o wrapper `agents-cli run`, que trava com "Local server did not start within 30s" no Windows — mesmo bug já catalogado no Codelab 1): `uv run adk run app "pergunta"`.
+- Seção 9 (cleanup/deletar o projeto): **pulada intencionalmente** — o `customer-support-agent` foi mantido no repositório como parte do portfólio de aprendizado, em vez de apagado como sugere o codelab original.
+
+**Status:** Codelab 2 do Dia 3 **concluído** (Seções 1–8 completas; Seção 9 pulada por decisão própria). **Dia 3 (Agent Skills) totalmente concluído** — whitepaper, Q&A, Codelab 1 e Codelab 2.
+
+**Conceitos novos (Codelab 2):**
+- **API drift:** quando a documentação/exemplo de uma biblioteca fica desatualizada porque uma versão mais nova mudou a interface — o código de exemplo não funciona mais como escrito.
+- **EventActions:** objeto que carrega "efeitos colaterais" de um `Event` no ADK 2.0 (incluindo o campo `route` usado para roteamento condicional no `Workflow`) — separado dos dados de saída (`output`) do evento.
+- **Cota por modelo (RPM/TPM/RPD):** o nível gratuito do Gemini limita uso por **modelo específico**, não pela chave como um todo — RPM (requisições/minuto), TPM (tokens/minuto), RPD (requisições/dia).
+
+**Glossário do dia (Codelab 2):**
+- **RPM / TPM / RPD:** Requests Per Minute, Tokens Per Minute, Requests Per Day — as três dimensões de cota que o Google mede separadamente por modelo no nível gratuito.
+- **Scaffold (revisão):** estrutura de projeto pré-gerada automaticamente, que pode conter bugs de geração caso a versão das libs tenha mudado desde que o template foi escrito — sempre vale lintar/testar antes de confiar.
+- **FunctionNode:** wrapper do ADK 2.0 que transforma uma função Python comum em um node válido dentro de um `Workflow` (usado quando o node não é um `LlmAgent`).
+- **Hot-reload / `--reload`:** recurso que recarrega o código automaticamente ao detectar uma mudança no arquivo, sem precisar reiniciar o servidor manualmente — no `adk web`, não funciona no Windows.
 
 ---
 
