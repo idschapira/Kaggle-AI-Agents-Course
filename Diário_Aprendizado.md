@@ -132,7 +132,45 @@
 - **Reviewer & Gate:** verificação automática (determinística) que bloqueia a execução se a validação falhar, em vez de depender só do julgamento do modelo.
 - **SKILL.md:** arquivo principal de uma Agent Skill, com frontmatter (metadados) e instruções/descrição de uso.
 
-**Status:** Q&A do whitepaper concluído. Próximo passo: codelabs práticos do Dia 3.
+**Sessão de aplicação prática — Codelab 1: Authoring Google Antigravity Skills (2026-06-19):**
+- Clonado o repositório de exemplos [rominirani/antigravity-skills](https://github.com/rominirani/antigravity-skills); descoberta uma divergência entre o codelab e o repo real: das 5 skills descritas no texto, só 4 estavam de fato commitadas (`git-commit-formatter`, `license-header-adder`, `json-to-pydantic`, `database-schema-validator`) — a 5ª (`adk-tool-scaffold`, nível "Composição") não existe no repositório atual. Decisão: seguir só com as 4 disponíveis.
+- Skills movidas para `.agent/skills/` na raiz do projeto (escopo **Workspace**, para versionar no GitHub junto com o aprendizado).
+- **4 testes realizados no Antigravity, todos com sucesso:**
+  1. `git-commit-formatter`: pedido de commit em linguagem natural gerou mensagem no padrão Conventional Commits (`feat(auth): add initial login placeholder`).
+  2. `license-header-adder`: header de licença adicionado a `scripts/sample.py`, com o agente convertendo automaticamente a sintaxe de comentário (`/* */` → `#`) por ser arquivo Python.
+  3. `json-to-pydantic`: JSON convertido para modelo Pydantic (`Optional[int] = None` inferido corretamente do campo `null`), seguindo o estilo do exemplo da skill. Confirmado que o trigger funciona em prompts **em português** — o matching é semântico, não por palavra-chave.
+  4. `database-schema-validator`: ao validar um SQL sem `PRIMARY KEY`, o agente **executou o script** `validate_schema.py` (em vez de avaliar visualmente) e reportou o erro corretamente — validação do padrão "Tool Use" do whitepaper.
+- Evidências dos testes organizadas em `docs/dia3_codelab1_tests/`.
+
+**Status:** Codelab 1 (Authoring Skills) **concluído** — todas as 7 seções fechadas (4/5 skills de exemplo testadas, Developer Toolkit do Agents CLI configurado e validado, instalação via `npx skills` confirmada). Codelab 2 ainda não iniciado.
+
+**Sessão de aplicação prática — Codelab 1, Seção 6 (The Developer Toolkit / Agents CLI) — 2026-06-19:**
+- Instalada a `google-agents-cli` via `uvx google-agents-cli setup`. **Problema de PATH no Windows:** o `uv` instala binários em `~/.local/bin`, que não estava no PATH do usuário — resolvido com `uv tool ensurepath` + reabertura completa do terminal (mudança de PATH só é lida por sessões abertas *depois* do ajuste).
+- Autenticação feita via `agents-cli login -i`, escolhendo **Gemini API Key** (gratuita, via AI Studio) em vez de Google Cloud ADC — alinhado à decisão de evitar billing do Vertex AI.
+- Criado projeto de exemplo `weather-assistant` (`agents-cli create weather-assistant --prototype --yes` + `agents-cli install`), com ~121 pacotes instalados via `uv sync` (destaque: `google-adk`, `google-genai`).
+- **Bug 1 encontrado:** o template gerado por padrão força o modo Vertex AI (`GOOGLE_GENAI_USE_VERTEXAI=True` + `google.auth.default()` em `app/agent.py`), mesmo quando o login foi feito via API Key. Corrigido removendo essas linhas, deixando o agente usar a Gemini API Key diretamente.
+- **Bug 2 encontrado:** `app/fast_api_app.py` (servidor local usado por `agents-cli run`/`playground`) também chamava `google.auth.default()` e criava um cliente de **Cloud Logging**, travando o processo sem credenciais GCP. Corrigido trocando por `logging` padrão do Python e desligando `otel_to_cloud` (telemetria para Cloud Trace).
+- **Bug 3 (não corrigido, contornado):** `agents-cli playground` falhou no Windows com `Error: Got unexpected extra arguments (app Dockerfile GEMINI.md ...)` — o argumento `.` (diretório atual) está sendo expandido incorretamente em múltiplos argumentos antes de chegar no comando `adk web`. Parece bug genuíno da ferramenta no Windows. **Workaround:** chamar o `adk` diretamente, pulando o wrapper: `uv run adk web app --host 127.0.0.1 --port 8080`.
+- Também observado: a flag `--reload` do `adk web` não é suportada no Windows (força `SelectorEventLoop`, incompatível com subprocessos) — o próprio ADK detecta isso e desliga automaticamente (`Forcing --no-reload`), sem ação necessária.
+- Playground subiu com sucesso em `http://127.0.0.1:8080`, agente `app` carregado corretamente na interface.
+- **Causa raiz do erro 403 identificada:** a API Key usada inicialmente era do projeto `kaggle-dia2-mcp` (criado no Dia 2 para a Developer Knowledge API) — nunca teve a Generative Language API habilitada. **Lição:** nem toda API Key do Google Cloud serve para qualquer API; precisa ser gerada especificamente em aistudio.google.com (projeto `gen-lang-client-...`), que já vem com essa API habilitada por padrão.
+- ⚠️ Nota de segurança: a API Key antiga chegou a ser colada em texto puro durante a sessão de debug — gerada uma key nova no AI Studio (boa prática, evita reusar uma chave exposta).
+- Teste final de validação no playground: `"How are you?"` → resposta correta do agente. Um erro `503 UNAVAILABLE` (modelo sobrecarregado) apareceu nas perguntas seguintes — confirmado ser instabilidade temporária do lado do Google, não erro de configuração.
+- **Seção 7 (Installing Agent Skills using npx skills):** seção informativa, sem passos práticos obrigatórios — alerta que skills instaladas via `npx skills` vão para `~/.agents/skills`, mas o Antigravity CLI só lê de `<projeto>/.agent/skills/` (escopo projeto) ou `~/.gemini/antigravity-cli/skills/` (escopo global). **Já resolvido automaticamente:** o `agents-cli setup` (Seção 6) já linkou as 7 skills instaladas direto em `~/.gemini/antigravity-cli/skills/` — nenhuma cópia manual foi necessária.
+
+**Status final do Codelab 1:** ✅ Concluído (7/7 seções).
+
+**Glossário do dia (sessão prática 2026-06-19):**
+- **uv / uvx:** `uv` é um gerenciador de pacotes Python rápido (o "npm do Python"); `uvx` roda uma ferramenta Python sem instalar permanentemente (equivalente ao `npx` do Node).
+- **PATH:** lista de pastas onde o sistema operacional procura programas executáveis. Se uma ferramenta foi instalada mas o terminal não a "acha", geralmente é porque a pasta dela não está no PATH.
+- **`uv tool ensurepath`:** comando que adiciona automaticamente a pasta de binários do `uv` (`~/.local/bin`) ao PATH do usuário no Windows.
+- **ADC (Application Default Credentials):** mecanismo de autenticação do Google Cloud usado por bibliotecas como `google.auth`; diferente de uma API Key — exige login via `gcloud`.
+- **npx skills (Vercel Labs):** gerenciador de pacotes para Agent Skills, compatível com várias ferramentas de IA; instala em `~/.agents/skills` por padrão.
+- **Escopo de skill (projeto vs. global):** skills podem viver na raiz do projeto (`.agent/skills/`, versionável no Git) ou em pasta global do usuário (`~/.gemini/...`, compartilhada entre todos os projetos).
+- **Erro 403 PERMISSION_DENIED vs. 503 UNAVAILABLE:** o 403 indica problema de configuração/permissão (ex.: API desabilitada no projeto da chave) — corrigível pelo usuário; o 503 indica sobrecarga temporária do servidor do provedor (Google) — não é erro de configuração, só tentar novamente depois.
+
+**Codelab 2 do Dia 3 (ainda não iniciado):**
+- [Vibe Coding AI Agents: Managing the Agent Lifecycle with Agents CLI and ADK 2.0](https://codelabs.developers.google.com/agents-cli-adk-lifecycle) — próxima etapa após fechar o Codelab 1.
 
 ---
 
