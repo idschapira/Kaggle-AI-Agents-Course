@@ -48,11 +48,9 @@ import base64
 import binascii
 import json
 import logging
-import os
 import re
 from typing import Any, Literal
 
-import google.auth
 from pydantic import BaseModel, Field
 
 from google.adk.agents import LlmAgent
@@ -60,16 +58,19 @@ from google.adk.agents.context import Context
 from google.adk.apps import App, ResumabilityConfig
 from google.adk.events import Event, RequestInput
 from google.adk.models import Gemini
+from google.genai import types as genai_types
 from google.adk.workflow import START, Workflow, node
 
 from . import config
 
 logger = logging.getLogger(__name__)
 
-_, project_id = google.auth.default()
-os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
-os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
-os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
+# NOTE: this project authenticates with a Google AI Studio API key (see
+# .env -> GOOGLE_GENAI_USE_VERTEXAI=FALSE / GOOGLE_API_KEY=...), not Vertex
+# AI. Earlier scaffolds hardcoded `google.auth.default()` +
+# `GOOGLE_GENAI_USE_VERTEXAI=True` here, which forced Vertex mode and
+# crashed without GCP ADC credentials - the same bug found in Dia 3's
+# customer-support-agent. Deliberately left out so the .env setting wins.
 
 
 # ---------------------------------------------------------------------------
@@ -78,9 +79,17 @@ os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
 
 class Expense(BaseModel):
-    """A parsed expense report."""
+    """A parsed expense report.
 
-    amount_usd: float
+    `amount_usd` accepts the alias "amount" too: the codelab's own test
+    payload uses the shorter key ({"amount": 150.0, ...}), so without the
+    alias Pydantic would reject it with "Field required" even though the
+    value is right there under a different name.
+    """
+
+    model_config = {"populate_by_name": True}
+
+    amount_usd: float = Field(alias="amount")
     submitter: str
     category: str
     description: str
@@ -125,11 +134,24 @@ class SecurityScreenResult(BaseModel):
 def parse_expense(node_input: Any) -> Event:
     """Extracts the expense and routes it by dollar amount.
 
-    `node_input` is whatever the workflow is started with: a dict with a
-    "data" key that is either base64-encoded JSON (how Pub/Sub delivers
-    messages in production) or already plain JSON (how we feed it in local
-    tests).
+    `node_input` is whatever the workflow is started with. It can arrive in
+    three different shapes depending on who is calling the graph:
+
+    - a `google.genai.types.Content` object - this is what the ADK
+      Playground/dev-ui chat box sends, because it wraps anything you type
+      the same way it would wrap a message to an LLM, even though this graph
+      has no chat model at the entry point. We pull the typed text back out
+      of `content.parts[*].text` before treating it as our payload.
+    - a dict with a "data" key that is base64-encoded JSON (how Pub/Sub
+      delivers messages in production).
+    - already plain JSON text or a plain dict (how we feed it in local
+      tests).
     """
+    if isinstance(node_input, genai_types.Content):
+        node_input = "".join(
+            part.text for part in (node_input.parts or []) if part.text
+        )
+
     raw = node_input.get("data", node_input) if isinstance(node_input, dict) else node_input
 
     if isinstance(raw, str):
