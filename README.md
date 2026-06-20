@@ -18,4 +18,4 @@ Repositório de estudos do curso **5-Day AI Agents** (Kaggle), com foco em funda
 
 ## Progresso
 
-Veja [`Diário_Aprendizado.md`](./Diário_Aprendizado.md) para o histórico completo do que foi aprendido em cada dia.
+Veja `[Diário_Aprendizado.md](./Diário_Aprendizado.md)` para o histórico completo do que foi aprendido em cada dia.
