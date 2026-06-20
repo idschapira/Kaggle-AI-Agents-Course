@@ -130,41 +130,61 @@ class SecurityScreenResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@node
-def parse_expense(node_input: Any) -> Event:
-    """Extracts the expense and routes it by dollar amount.
+def _extract_expense_payload(node_input: Any) -> dict[str, Any]:
+    """Normalizes `node_input` into a plain expense dict.
 
-    `node_input` is whatever the workflow is started with. It can arrive in
-    three different shapes depending on who is calling the graph:
+    `node_input` can arrive in several different shapes depending on who -
+    or what - is calling the graph:
 
     - a `google.genai.types.Content` object - this is what the ADK
       Playground/dev-ui chat box sends, because it wraps anything you type
       the same way it would wrap a message to an LLM, even though this graph
       has no chat model at the entry point. We pull the typed text back out
       of `content.parts[*].text` before treating it as our payload.
-    - a dict with a "data" key that is base64-encoded JSON (how Pub/Sub
-      delivers messages in production).
-    - already plain JSON text or a plain dict (how we feed it in local
-      tests).
+    - the envelope `{"data": <expense dict>, "attributes": {...}}` - this is
+      what our own ambient trigger endpoint (`fast_api_app.py`) sends after
+      it has already base64-decoded the raw Pub/Sub message.
+    - a dict (or JSON text) with a "data" key holding base64-encoded JSON -
+      the shape a raw, un-decoded Pub/Sub push message would have.
+    - already plain JSON text or a plain dict with the expense fields
+      directly at the top level (how we feed it in local tests, or how the
+      Playground sends a typed-in JSON object).
+
+    Each `if` below only fires if the previous step left something that
+    still needs unwrapping, so any of the shapes above fall through to the
+    same final dict.
     """
     if isinstance(node_input, genai_types.Content):
         node_input = "".join(
             part.text for part in (node_input.parts or []) if part.text
         )
 
-    raw = node_input.get("data", node_input) if isinstance(node_input, dict) else node_input
-
-    if isinstance(raw, str):
+    if isinstance(node_input, str):
         try:
-            raw = base64.b64decode(raw, validate=True).decode("utf-8")
-        except (binascii.Error, UnicodeDecodeError, ValueError):
-            pass  # not base64 - treat it as plain JSON text already
-        payload = json.loads(raw)
-    elif isinstance(raw, dict):
-        payload = raw
-    else:
-        raise ValueError(f"Unrecognized expense event payload: {raw!r}")
+            node_input = json.loads(node_input)
+        except json.JSONDecodeError:
+            pass  # not JSON yet - might still be a bare base64 string
 
+    if isinstance(node_input, dict) and "data" in node_input:
+        node_input = node_input["data"]
+
+    if isinstance(node_input, str):
+        try:
+            node_input = base64.b64decode(node_input, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            pass  # not base64 either - treat it as plain JSON text already
+        node_input = json.loads(node_input)
+
+    if not isinstance(node_input, dict):
+        raise ValueError(f"Unrecognized expense event payload: {node_input!r}")
+
+    return node_input
+
+
+@node
+def parse_expense(node_input: Any) -> Event:
+    """Extracts the expense and routes it by dollar amount."""
+    payload = _extract_expense_payload(node_input)
     expense = Expense.model_validate(payload)
 
     route: str = (

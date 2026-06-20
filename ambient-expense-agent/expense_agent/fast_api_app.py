@@ -11,11 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import logging
 import os
 
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
+from starlette.requests import Request
 
 from expense_agent.app_utils.telemetry import setup_telemetry
 from expense_agent.app_utils.typing import Feedback
@@ -47,9 +49,45 @@ app: FastAPI = get_fast_api_app(
     allow_origins=allow_origins,
     session_service_uri=session_service_uri,
     otel_to_cloud=False,
+    # Makes this agent "ambient": registers ADK's built-in
+    # /apps/{app_name}/trigger/pubsub endpoint, which decodes the base64
+    # Pub/Sub payload and starts a fresh workflow session per event.
+    trigger_sources=["pubsub"],
 )
 app.title = "ambient-expense-agent"
 app.description = "API for interacting with the Agent ambient-expense-agent"
+
+
+@app.middleware("http")
+async def shorten_pubsub_subscription_name(request: Request, call_next):
+    """Normalizes the Pub/Sub subscription name before ADK sees it.
+
+    Real Pub/Sub push requests carry a fully-qualified subscription path
+    (e.g. "projects/my-project/subscriptions/expense-agent-sub"). ADK's
+    built-in trigger handler turns that into the session's userId by just
+    swapping "/" for "--", which keeps the whole path
+    ("projects--my-project--subscriptions--expense-agent-sub") - unreadable
+    in the dev-ui session list. We intercept the request here and rewrite
+    "subscription" down to its last path segment ("expense-agent-sub")
+    before ADK's handler ever sees it, so session records stay readable.
+    """
+    if request.url.path.endswith("/trigger/pubsub") and request.method == "POST":
+        body = await request.body()
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = None
+
+        if isinstance(payload, dict) and isinstance(payload.get("subscription"), str):
+            payload["subscription"] = payload["subscription"].rsplit("/", 1)[-1]
+            body = json.dumps(payload).encode("utf-8")
+
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request._receive = receive  # noqa: SLF001 - Starlette's documented way to replay the body
+
+    return await call_next(request)
 
 
 @app.post("/feedback")
