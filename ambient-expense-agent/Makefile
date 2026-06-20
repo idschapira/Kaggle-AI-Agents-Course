@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: install playground run lint test
+.PHONY: install playground run lint test generate-traces grade eval
 
 install:
 	uv sync --all-extras
@@ -34,3 +34,26 @@ lint:
 
 test:
 	uv run pytest
+
+# Section 9 (local evals): drives the graph directly through its
+# human-in-the-loop pause for every case in tests/eval/datasets/
+# basic-dataset.json and writes artifacts/traces/generated_traces.json.
+# Custom script instead of `agents-cli eval generate` - see the docstring
+# in generate_traces.py for why.
+generate-traces:
+	uv run python tests/eval/generate_traces.py
+
+# Scores the generated traces against the two LLM-as-judge metrics
+# (routing_correctness, security_containment) defined in
+# tests/eval/eval_config.yaml. Writes artifacts/grade_results/results_<ts>.{json,md}.
+# Custom script instead of `agents-cli eval grade` - the installed SDK
+# routes every CodeExecutionMetric (even execution: "local") through a
+# remote Vertex AI :evaluateInstances call regardless of that flag (see
+# vertexai/_genai/_evals_metric_handlers.py's _METRIC_HANDLER_MAPPING),
+# which needs a GCP project this project intentionally avoids. See the
+# docstring in grade.py for the full root-cause writeup.
+grade:
+	uv run python tests/eval/grade.py
+
+# Convenience: generate-traces + grade in one step.
+eval: generate-traces grade
