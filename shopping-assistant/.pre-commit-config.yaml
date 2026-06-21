@@ -1,0 +1,21 @@
+repos:
+  - repo: local
+    hooks:
+      - id: end-of-file-fixer
+        name: End of File Fixer
+        entry: /home/ilanschapira/.venvs/shopping-assistant/bin/end-of-file-fixer
+        language: system
+        types: [file]
+        files: ^shopping-assistant/
+      - id: trailing-whitespace
+        name: Trailing Whitespace
+        entry: /home/ilanschapira/.venvs/shopping-assistant/bin/trailing-whitespace-fixer
+        language: system
+        types: [file]
+        files: ^shopping-assistant/
+      - id: semgrep
+        name: Semgrep Security Scan
+        entry: /home/ilanschapira/.venvs/shopping-assistant/bin/semgrep --error --config shopping-assistant/.semgrep/rules.yaml
+        language: system
+        types: [python]
+        files: ^shopping-assistant/
