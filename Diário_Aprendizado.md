@@ -268,7 +268,17 @@
 **Pendências conhecidas:**
 - `tests/integration/test_agent.py` e `test_server_e2e.py` ainda mandam uma mensagem de chat livre pro agente — funcionava com o agente de exemplo (chat simples), mas não bate com o grafo novo (que espera um evento de despesa). Corrigidos só os imports/caminhos para não quebrar a coleta dos testes; ainda precisam ser reescritos (item separado da Seção 9, que cobre só os *evals*, não os testes unitários/integração do pytest).
 - **Codelab A: Seção 9 (avaliação local) concluída e validada de ponta a ponta** — `make generate-traces` + `make grade` rodando 100% local (sem GCP/Vertex AI), com `routing_correctness` e `security_containment` em 5.00/5 nos 5 casos do dataset sintético.
-- Codelab B (Secure AI Code) ainda não iniciado.
+- Codelab B (Secure AI Code) **em andamento** — ver sessão abaixo.
+
+**Sessão de aplicação prática — Codelab B: Vibecode and Secure an AI Agent Lifecycle with Antigravity and TDD — 2026-06-20/21:**
+- Codelab: [Vibecode and Secure an AI Agent Lifecycle with Antigravity and TDD](https://codelabs.developers.google.com/secure-agentic-coding).
+- **Correção de fluxo combinada com o usuário:** ele pediu para eu instruir passo a passo, sempre mostrando os comandos de terminal exatos para ele rodar e acompanhar — em vez de eu executar tudo de uma vez no meu próprio sandbox. Esse é o ritmo seguido a partir daqui.
+- **Seção 2-4 (setup, scaffold, lint):** projeto `shopping-assistant` criado via `agents-cli scaffold create`, com a vulnerabilidade simulada pedida pelo codelab (chave de API fake hardcoded em `app/agent.py`) e o tool `redeem_discount` (resgate de cupom único por usuário registrado, com `DISCOUNT_STORE` em memória).
+- **Bug de API drift encontrado no lint (`ty check`):** o codelab pede `Gemini(model=..., api_key="...")`, mas a versão instalada do `google-adk` (2.2.0) **não tem** o campo `api_key` no modelo `Gemini` — ele lê a credencial da variável de ambiente `GOOGLE_API_KEY`. O `ty` (type checker) acusou `unknown-argument`, travando o lint mesmo com `ruff`/`codespell` passando. **Correção:** trocado para `os.environ["GOOGLE_API_KEY"] = "AIzaSyD-mock-key-value-12345"` antes de instanciar o `Gemini(model=...)` sem o kwarg — mantém a chave hardcoded em texto puro no arquivo (continua sendo a "isca" pro Semgrep pegar na Seção 10), só corrige a forma de passá-la pra biblioteca.
+- **Bug de toolchain (uv sync por grupos):** `agents-cli lint` roda `uv sync --dev --extra lint` por baixo dos panos — isso desinstala qualquer pacote que não esteja nesses dois grupos, incluindo o grupo customizado `security` (`pre-commit`, `pre-commit-hooks`, `semgrep`) que tínhamos adicionado ao `pyproject.toml`. **Lição:** sempre que rodar `agents-cli lint`, reinstalar depois com `uv sync --group dev --group security --extra lint` antes de seguir para os passos de segurança (Seções 6 e 10).
+- Lint final 100% verde: `ruff check`, `ruff format --check`, `codespell` e `ty check` todos passando.
+- **Seção 5 (`.agents/CONTEXT.md`):** criado o arquivo de padrões seguros do projeto ("paved roads": validação de input via Pydantic, proibição de shell execution sem hook aprovado, e a regra do "loop de remediação" — se o commit falhar no Semgrep, tratar como tarefa de refatoração, corrigir, re-testar e tentar comitar de novo).
+- **Diferença de terminal Windows:** o usuário roda os comandos no PowerShell (via Cursor), não bash — `cat > arquivo << 'EOF' ... EOF` (heredoc do bash) não existe no PowerShell. Equivalente usado: `@' ... '@ | Set-Content -Encoding utf8 arquivo` (here-string do PowerShell).
 
 **Conceitos novos:**
 - **Intent Drift / Trust Decay:** o agente, a cada iteração de "vibe coding", desvia um pouco do que foi pedido originalmente; pequenos desvios acumulados ao longo de várias iterações erodem a confiança no resultado final.
@@ -294,5 +304,15 @@
 - **Vibe Trajectory:** o caminho completo de prompts e decisões que levou a um determinado estado do código — não só o resultado final.
 - **`ctx.resume_inputs` / `ctx.node_path`:** propriedades do `Context` do ADK 2.0; `resume_inputs` guarda respostas humanas já recebidas (indexadas por `interrupt_id`); `node_path` identifica de forma única a posição do node atual dentro do grafo.
 - **`event.author` vs. `event.node_info.path`:** dentro de um `Workflow`, `event.author` pode ser sobrescrito pro nome do workflow (não do nó) — é assim "de propósito" no ADK, pra agrupar eventos sob um autor comum. Quem precisa saber exatamente *qual nó* gerou um evento (como um script de trace pra avaliação) deve usar `event.node_info.path`, que é sempre o caminho real do nó, nunca sobrescrito.
+
+**Conceitos novos (Codelab B):**
+- **"Paved road" / CONTEXT.md:** arquivo de contexto persistente com convenções de segurança pré-aprovadas do projeto — evita que o agente "invente" um jeito de fazer algo (potencialmente inseguro) recorrendo só à memória de treinamento.
+- **Context rot:** degradação da qualidade de raciocínio do agente quando se sobrecarrega o contexto com documentação genérica demais — por isso o `CONTEXT.md` deve ser curto e específico, carregado sob demanda.
+- **Pre-Commit Remediation Loop:** regra de processo (não de código) que instrui o agente a tratar uma falha de pre-commit hook (ex.: Semgrep) como uma tarefa de refatoração — corrigir, re-testar, tentar comitar de novo — em vez de usar `--no-verify` pra simplesmente pular o hook.
+
+**Glossário do dia (Codelab B):**
+- **`uv sync --group X --extra Y`:** o `uv` só instala/mantém os grupos e extras (`[dependency-groups]` / `[project.optional-dependencies]`) explicitamente listados no comando — qualquer pacote de um grupo não citado é desinstalado. Por isso ferramentas como `agents-cli lint` (que chama `uv sync` com um conjunto fixo de grupos) podem remover pacotes de outros grupos do mesmo projeto sem avisar.
+- **Here-string (PowerShell):** sintaxe `@' ... '@` para texto multi-linha literal — equivalente ao heredoc (`<< 'EOF'`) do bash, usado para gravar arquivos com conteúdo de várias linhas direto no terminal.
+- **`ty` (type checker) vs. comportamento em runtime:** um Pydantic model pode "engolir" silenciosamente um argumento desconhecido em tempo de execução (sem erro), mas isso não significa que o campo seja válido — um type checker estático como o `ty` ainda vai reportar `unknown-argument`, porque ele valida contra a definição real da classe, não contra o que "funcionou na prática".
 
 ## Dia 5 — *(a iniciar)*
