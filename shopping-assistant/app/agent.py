@@ -38,6 +38,16 @@ model = Gemini(model="gemini-3.1-flash-lite")
 # In-memory discount redemption store (simulating database state).
 DISCOUNT_STORE: Dict[str, bool] = {"WELCOME50": False, "SUMMER20": False}
 
+# Threat model fix (Elevation of Privilege, see threat_model.md):
+# `user_id` must never be trusted just because the LLM decided to pass it in
+# the tool call — it must be checked against a known set of *registered*
+# users. Rejecting only the "guest_" prefix let any other string (e.g.
+# "admin_master") pass as if it were an authenticated user. In a real system
+# this set would come from an authenticated session/database, not be
+# hardcoded — but even this in-memory allow-list closes the gap where any
+# arbitrary string was accepted as valid.
+REGISTERED_USERS = {"user_alice", "user_bob"}
+
 
 def redeem_discount(code: str, user_id: str) -> str:
     """Agent Tool: Redeem a single-use discount code for a registered user.
@@ -53,7 +63,7 @@ def redeem_discount(code: str, user_id: str) -> str:
         return "Error: Invalid discount code."
     if DISCOUNT_STORE[code]:
         return "Error: Discount code has already been redeemed."
-    if not user_id or user_id.startswith("guest_"):
+    if not user_id or user_id not in REGISTERED_USERS:
         return "Error: Registered user account required to redeem discounts."
 
     DISCOUNT_STORE[code] = True

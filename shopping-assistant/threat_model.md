@@ -70,6 +70,13 @@ Análise gerada via skill `stride-threat-model`, aplicada sobre `app/agent.py`.
 
 **Mitigação recomendada**: nunca confiar em argumentos de tool gerados pelo LLM para decisões de identidade/autorização — `user_id` deve vir de fora do contexto da conversa (sessão autenticada), e a tool deve validar que esse `user_id` é o do usuário autenticado atual, não o que o modelo "decidiu" escrever.
 
+**Validação empírica (2026-06-21)**: testamos um prompt de "admin mode" no Playground, instruindo o `ShoppingHelper` a ignorar instruções anteriores e redimir um código para `user_id="admin_master"`. Resultado: o modelo recusou e nem chegou a chamar `redeem_discount`. Isso confirma que existem **duas camadas de defesa independentes**, e que o achado documentado acima trata apenas da camada que falha:
+
+- **Camada 1 — alinhamento do modelo (frágil, não testável de forma confiável)**: o LLM pode "decidir" não obedecer a um prompt de injeção e não chamar a tool. Foi o que aconteceu neste teste específico, com este prompt e este modelo (`gemini-3.1-flash-lite`). Não é uma garantia: depende do modelo, da versão, e da sofisticação do prompt de ataque. Um prompt diferente, ou um modelo futuro mais "obediente", pode produzir resultado oposto.
+- **Camada 2 — validação no código da tool (robusta, é a que importa em produção)**: mesmo que o modelo decida chamar `redeem_discount(code="SUMMER20", user_id="admin_master")`, a tool aceitaria essa chamada — porque a única verificação é `user_id.startswith("guest_")`, e `"admin_master"` passa essa checagem. Não há nenhuma barreira de código que impeça a elevação de privilégio descrita no achado.
+
+**Conclusão**: o teste é uma boa notícia pontual (o modelo resistiu nesse caso), mas não reduz a severidade do achado. A mitigação recomendada continua válida e necessária — não se deve depender da camada 1 para segurança real.
+
 ## Resumo de Severidade
 
 | Categoria | Achado | Severidade |
