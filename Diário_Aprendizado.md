@@ -448,4 +448,40 @@ Todos os 6 casos passaram como esperado.
 
 **Conceito-chave:** "o modelo recusou" não é o mesmo que "o sistema é seguro". Defesa de segurança real precisa estar na camada determinística (código/validação), não depender do julgamento do LLM — que pode mudar de comportamento entre versões, prompts, ou até entre chamadas.
 
-## Dia 5 — *(a iniciar)*
+## Dia 5 — Spec-Driven Production Grade Development in the Age of Vibe Coding
+
+**Data:** 2026-06-21
+
+**Objetivo da tarefa:** Assistir ao vídeo-resumo do Dia 5, ler o whitepaper *Spec-Driven Production Grade Development in the Age of Vibe Coding* (autor Lee Boonstra) e discutir os conceitos via Q&A, antes de avançar para os dois codelabs opcionais (deploy no Google Cloud; front-end web conectado ao agente hospedado).
+
+**O que foi feito:**
+- Vídeo-resumo assistido.
+- Whitepaper lido por completo (38 páginas) e discutido em 5 blocos, com pergunta de verificação ao final de cada um:
+  1. **Spec-Driven Development (SDD):** o código se torna "descartável" porque a especificação (não o código) é a fonte da verdade — sem apego emocional/sunk cost, dá pra regenerar tudo do zero se o requisito mudar.
+  2. **Onde as instruções vivem + Modos de execução:** chat (efêmero) vs. `specs/` (versionado, design técnico) vs. Agent Skills (hábito reutilizável, ex.: `git-commit-formatter` do Dia 3) vs. system prompts hierárquicos (`GEMINI.md` global → `AGENTS.md` compartilhado → `GEMINI.md` do projeto). 4 modos de execução: Arquiteto (projeto novo), Builder (feature), Detetive Forense (bug fix — evidência em vez de sintoma), Autor (documentação).
+  3. **MCP + Cultura de time + Code Reviews em escala:** problemas de escala com IA gerando código (merge conflicts, review gridlock, context fragmentation) e os 3 tiers de revisão automatizada de código: Tier 1 Managed (pronto, genérico), Tier 2 Hybrid (skill própria + GitHub Action — escolhido para o nosso curso), Tier 3 Custom (agente ADK com memória entre PRs — meta para o Capstone).
+  4. **Sustentabilidade + Zero-Trust:** "approval fatigue" (aprovar tudo no automático por exaustão); o incidente real dos 50 e-mails falsos (agente em modo YOLO clicou um botão e alucinou uma conexão com um agente de e-mail legado) — discutido por que **HITL** (não o sandbox) é a defesa que teria evitado o envio: sandbox contém o blast radius de comandos destrutivos à infraestrutura, mas não impede uma chamada de API "legítima" (enviar e-mail) que está fora da fronteira do sandbox.
+  5. **Policy Server + Context Hygiene:** gating estrutural (regra fixa em `policies.yaml`, tipo "viewer não pode usar send_email") + gating semântico (um segundo LLM avalia se o *conteúdo* da ação viola uma política, ex.: PII em texto puro) — o mesmo padrão do `security_screen` que construímos no `ambient-expense-agent` (Dia 4), só generalizado como serviço único na frente de qualquer tool call. `ContextResolver` evita hardcode de dados sensíveis em prompts via placeholders `[[VARIAVEL]]`.
+- Reflexão final aplicada ao `ambient-expense-agent`: próxima evolução natural seria adicionar um Tier 2 code review (GitHub Action + skill própria, cobrindo o limite de $100, regex de PII e roteamento de injection) rodando automaticamente em todo PR, em vez de só manualmente via `make grade`.
+
+**Conceitos novos:**
+- **Spec-Driven Development (SDD):** desenvolver a partir de uma especificação detalhada (não de um "vibe"), tratando o código como artefato descartável e a spec como fonte da verdade.
+- **BDD / Gherkin (`Scenario / Given / When / Then`):** sintaxe que força o agente a pensar em Estado → Ação → Resultado, eliminando ambiguidade na especificação.
+- **Context fragmentation:** quando o agente trabalha com um snapshot desatualizado do código porque alguém mudou algo em paralelo (efeito "telefone sem fio").
+- **Approval fatigue:** exaustão de aprovar micro-ações de IA repetidamente, levando a aprovações reflexivas sem checagem real.
+- **Context Hallucination:** quando o agente, sem dado suficiente, preenche a lacuna com qualquer string disponível no contexto (inclusive dados sensíveis hardcoded).
+- **Policy Server (gating estrutural + semântico):** camada que intercepta toda chamada de tool — regra determinística rápida (papel/ambiente) + um segundo LLM avaliando o conteúdo da ação contra políticas de privacidade.
+- **3 Tiers de Code Review automatizado:** Managed (pronto), Hybrid (skill própria + CI), Custom (agente ADK com memória/observabilidade própria).
+
+**Glossário do dia:**
+- **"It's disposable" (código descartável):** filosofia de não se prender ao código gerado, já que a spec permite regenerá-lo a qualquer momento.
+- **Conditional LGTM:** aprovação de PR condicionada a passar todos os testes automatizados, permitindo merge automático sem esperar revisão manual cross-timezone.
+- **ContextResolver:** utilitário que troca placeholders (`[[VARIAVEL]]`) por valores reais só na hora da execução, evitando hardcode de PII em specs/prompts de teste.
+- **Sandbox vs. HITL (distinção-chave do dia):** sandbox protege a infraestrutura (blast radius de comandos destrutivos); HITL/Policy Server protege a decisão de negócio (a ação em si, antes de virar real).
+- **Knowledge cutoff (revisitado):** lembrete de sempre incluir números de versão de libs no prompt, pois o agente tende a sugerir versões antigas baseadas na data de corte do treinamento.
+
+**Status:** Whitepaper do Dia 5 concluído (leitura + Q&A em 5 blocos). Codelabs opcionais (Deploy no Google Cloud; Front-end web) **pendentes para a próxima sessão**.
+
+---
+
+## Dia 5 (continuação) — *(codelabs pendentes)*
