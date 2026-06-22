@@ -368,4 +368,23 @@
 - **CI/CD remoto** (ainda não implementado neste projeto) → a única camada que não pode ser pulada localmente.
 Cada camada gateia o processo em um ponto diferente da linha do tempo — juntas formam defesa em profundidade, nenhuma sozinha é suficiente.
 
+**Status:** commit `141f5fb` pushado com sucesso para `origin/main` (`shopping-assistant/.agents/CONTEXT.md`, os 3 `implementation_plan.md` de teste, e o Diário).
+
+**Troubleshooting (fora do código, mas registrado por ser útil):** o `git push` falhou uma vez com `Could not resolve host: github.com` — não era erro de git, e sim DNS do WSL2 desatualizado (comum após o PC dormir/trocar de rede). Resolvido forçando um servidor DNS conhecido: `echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf`, depois repetindo só o `git push` (sem precisar refazer add/commit).
+
+### Seção 9 — Testes de segurança outcome-based (fase GREEN do TDD)
+
+**O que foi feito:** criado `shopping-assistant/tests/test_agent.py` com 3 testes de segurança para a tool `redeem_discount`, seguindo dois princípios centrais:
+- **Assert on outcomes, not interactions**: os testes verificam a string de retorno final e o estado do `DISCOUNT_STORE` depois da chamada — nunca espionam *como* a função chegou lá (sem mocks de chamadas internas). Isso torna o teste resiliente a refatorações internas que não mudem o comportamento.
+- **Enforce Strict Guardrails**: cada teste cobre uma regra de negócio/segurança específica já identificada no `threat_model.md` (Seção 7): código de uso único, código inválido, conta guest sem permissão.
+
+**Testes**:
+1. `test_discount_code_can_only_be_redeemed_once` — primeira redenção com sucesso, segunda (mesmo código, usuário diferente) bloqueada.
+2. `test_discount_redemption_rejects_invalid_code` — código inexistente é rejeitado.
+3. `test_discount_redemption_rejects_guest_accounts` — usuário `guest_*` não pode redimir, e o estado do store permanece inalterado (`False`).
+
+**Fixture de isolamento**: `reset_store` (`@pytest.fixture(autouse=True)`) zera o `DISCOUNT_STORE` antes *e* depois de cada teste (via `yield`), garantindo que a ordem de execução dos testes não afete o resultado.
+
+**Validação (fase GREEN):** `uv run pytest tests/test_agent.py` → **3 passed**. Dois avisos cosméticos, sem impacto: `PytestCacheWarning` (de novo o `drvfs`, não conseguindo escrever cache em `/mnt/c/...`) e um `DeprecationWarning` interno do `google-adk` (`BaseAgentConfig`), não relacionado ao nosso código.
+
 ## Dia 5 — *(a iniciar)*
