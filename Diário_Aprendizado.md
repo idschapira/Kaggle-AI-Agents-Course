@@ -399,4 +399,15 @@ Cada camada gateia o processo em um ponto diferente da linha do tempo — juntas
 
 **Conceito-chave:** o valor real do gate local não é só *bloquear* — é fechar o ciclo: bloquear → ler o erro → refatorar → re-testar → tentar de novo, tudo localmente, antes de qualquer push. Isso evita gastar um ciclo de CI/CD remoto (mais lento) só para descobrir um problema que podia ter sido pego na própria máquina do desenvolvedor.
 
+### Seção 11 — Rodar e testar o agente localmente
+
+**O que foi feito:** validado o agente `ShoppingHelper` de ponta a ponta no ADK Dev UI (playground), já com a chave de API carregada de forma segura (Seção 10).
+
+- **Instalação faltante identificada:** o `agents-cli` é uma ferramenta global (`uv tool`), não uma dependência do projeto — nunca tinha sido instalada no ambiente WSL novo. Resolvido com `uvx google-agents-cli setup` + `agents-cli login -i` (opção Gemini API Key).
+- **`GEMINI_API_KEY` vs. `GOOGLE_API_KEY`:** reapareceu a mesma pegadinha do Dia 3 — `GEMINI_API_KEY` precisa ser exportada a cada terminal novo e só é usada pelo `agents-cli` (login/CLI), enquanto o `agent.py` lê `GOOGLE_API_KEY` do `app/.env` (Seção 10). São duas chaves/variáveis com propósitos diferentes, mesmo que o valor real seja a mesma chave do AI Studio.
+- **Erro `400 API_KEY_INVALID` no playground:** causa raiz era o `app/.env` ainda com o placeholder `YOUR_API_KEY` — corrigido editando o arquivo direto no Cursor com a chave real.
+- **Teste final no Dev UI:** prompt `"Can you redeem the discount code WELCOME50 for user user_123?"` → o agente chamou a tool `redeem_discount`, que teve sucesso (`user_123` não começa com `guest_`, então passa como usuário registrado) → resposta confirmando a redenção. Trace visível no painel de eventos: `ShoppingHelper` → `redeem_discount` (chamada) → `redeem_discount` (retorno) → resposta final.
+
+**Status: Codelab B (Vibecode and Secure an AI Agent Lifecycle with Antigravity and TDD) concluído — Seções 1 a 11.**
+
 ## Dia 5 — *(a iniciar)*
