@@ -352,4 +352,20 @@
 
 **Conceito-chave:** o risco mais sério não é só "o código tem uma chave hardcoded" — é que a tool inteira confia em argumentos (`user_id`, `code`) que o modelo decide a partir da conversa, em vez de vir de uma fonte autenticada fora do alcance do LLM. Isso conecta Spoofing, Tampering e Elevation of Privilege num único ponto de origem.
 
+### Seção 8 — Gate da fase de Plan (TDD Planning Gate)
+
+**O que foi feito:** adicionamos uma nova regra ao final de `shopping-assistant/.agents/CONTEXT.md` — o **TDD Planning Gate**. A partir de agora, toda vez que o agente entrar na fase de Plan (antes de gerar código), ele é obrigado a decompor a tarefa em estágios lógicos *e* incluir uma seção dedicada de **Security Boundaries & Assertions**, listando casos de borda que poderiam explorar a feature.
+
+**Teste do gate**: geramos três `implementation_plan.md` de demonstração (sem implementar nenhuma tool de fato), em `shopping-assistant/.agents/test-plans/`, simulando o que o Antigravity mostraria antes de pedir aprovação:
+- `award_loyalty_points`: risco de pontos negativos/zero, dupla concessão pra mesma compra (replay), `user_id` não-autenticado.
+- `process_cart_checkout`: condição de corrida no checkout duplicado, total de pedido que deve ser recalculado no servidor (nunca confiar no valor vindo do LLM), `cart_id` de outro usuário (IDOR).
+- `update_discount_status`: elevação de privilégio (tool administrativa), ausência de log de auditoria, abuso de disponibilidade por credencial comprometida.
+
+**Conceito-chave (timing dos mecanismos de segurança até agora)**:
+- **`CONTEXT.md`** → lido *antes* de planejar — molda como o agente pensa e propõe a solução.
+- **Agent Hook** (`.agents/hooks.json`) → intercepta *durante* a execução, antes de uma tool/comando rodar.
+- **Git Hook** (`pre-commit`) → roda *depois* do código pronto, no momento do commit.
+- **CI/CD remoto** (ainda não implementado neste projeto) → a única camada que não pode ser pulada localmente.
+Cada camada gateia o processo em um ponto diferente da linha do tempo — juntas formam defesa em profundidade, nenhuma sozinha é suficiente.
+
 ## Dia 5 — *(a iniciar)*
