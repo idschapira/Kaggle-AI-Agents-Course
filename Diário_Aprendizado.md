@@ -338,4 +338,18 @@
 - **`sys.stdin` / código de saída (`exit code`):** forma de um script de validação "conversar" com quem o chamou — recebe dados (aqui, um JSON com o comando que o agente quer rodar) pela entrada padrão, e devolve a decisão pelo código de saída (`0` = aprovado, qualquer outro valor = bloqueado).
 - **`files:` (escopo de hook no pre-commit):** expressão regular que restringe um hook a um subconjunto de caminhos do repositório — essencial em monorepos, para não aplicar correções automáticas em pastas de outros projetos sem querer.
 
+### Seção 7 — Skill de Threat Modeling STRIDE
+
+**O que foi feito:** criamos uma skill customizada do Antigravity, `stride-threat-model` (`shopping-assistant/.agents/skills/stride-threat-model/SKILL.md`), que documenta o processo de análise de segurança usando o framework STRIDE (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege). Aplicamos essa skill de fato sobre `app/agent.py` (o agente `ShoppingHelper` e sua tool `redeem_discount`), gerando `shopping-assistant/threat_model.md`.
+
+**Principais achados do threat model:**
+- **Spoofing:** `user_id` é só uma string decidida pelo próprio LLM a partir da conversa — não há autenticação real, só uma checagem de prefixo (`guest_`).
+- **Tampering:** a chave de API hardcoded (já conhecida, alvo do Semgrep) + uma race condition no dicionário `DISCOUNT_STORE` (duas chamadas simultâneas podem ambas passar pela verificação "já foi usado?" antes de qualquer uma marcar o código como usado).
+- **Repudiation:** nenhuma redenção é logada — impossível auditar quem usou o quê.
+- **Information Disclosure:** a chave hardcoded de novo, e mensagens de erro que permitem "enumerar" quais códigos de desconto existem.
+- **Denial of Service:** sem rate limiting nem isolamento por usuário na tool.
+- **Elevation of Privilege:** como `user_id` e `code` são preenchidos pelo LLM a partir do texto da conversa (não por uma fonte autenticada), a tool é vulnerável a prompt injection — um usuário poderia escrever um prompt que convence o modelo a redimir um código em nome de outro `user_id`.
+
+**Conceito-chave:** o risco mais sério não é só "o código tem uma chave hardcoded" — é que a tool inteira confia em argumentos (`user_id`, `code`) que o modelo decide a partir da conversa, em vez de vir de uma fonte autenticada fora do alcance do LLM. Isso conecta Spoofing, Tampering e Elevation of Privilege num único ponto de origem.
+
 ## Dia 5 — *(a iniciar)*
