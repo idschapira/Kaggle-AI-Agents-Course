@@ -387,4 +387,16 @@ Cada camada gateia o processo em um ponto diferente da linha do tempo — juntas
 
 **Validação (fase GREEN):** `uv run pytest tests/test_agent.py` → **3 passed**. Dois avisos cosméticos, sem impacto: `PytestCacheWarning` (de novo o `drvfs`, não conseguindo escrever cache em `/mnt/c/...`) e um `DeprecationWarning` interno do `google-adk` (`BaseAgentConfig`), não relacionado ao nosso código.
 
+### Seção 10 — Verificar o gating e a autocorreção do agente
+
+**O que foi feito:** demonstramos o ciclo completo Refactor-and-Commit do TDD, com o gate de git de verdade bloqueando e depois liberando um commit.
+
+- **Primeira tentativa de commit não disparou nada:** `agent.py` já estava commitado desde a Seção 2-4 sem nenhuma mudança — `git add .` não tinha diff pra commitar, então o pre-commit nem rodou nos arquivos certos. Adicionada uma linha de comentário trivial em `agent.py` (mantendo a chave hardcoded) só pra criar uma mudança real e poder reproduzir a demonstração do codelab.
+- **Falha real do Semgrep observada:** `uv run git commit` (sem `--no-verify`, de propósito) disparou o hook e o Semgrep bloqueou o commit, apontando exatamente a linha 25 (`Security Issue: Hardcoded Google API key prefix detected.`) — o mesmo "Pre-Commit Remediation Loop" documentado no `CONTEXT.md` desde a Seção 5.
+- **Refactor de segurança aplicado em `shopping-assistant/app/agent.py`:** removida a chave hardcoded; adicionado `load_dotenv(Path(__file__).resolve().parent / ".env")` (carregando `app/.env`, já no `.gitignore`) e uma checagem explícita (`RuntimeError`) caso `GOOGLE_API_KEY` não esteja definida. Criado `shopping-assistant/app/.env.example` (placeholder seguro, esse sim versionado) documentando o formato esperado.
+- **Pytest re-validado depois do refactor:** `uv run pytest tests/test_agent.py` → 3 passed — confirma que a correção de segurança não quebrou nenhum guardrail de negócio.
+- **Segunda tentativa de commit: sucesso.** Com a chave removida, o Semgrep não encontrou mais nada para reportar, e o commit (`fix(security): load GOOGLE_API_KEY from .env instead of hardcoding it`) passou e foi enviado ao GitHub.
+
+**Conceito-chave:** o valor real do gate local não é só *bloquear* — é fechar o ciclo: bloquear → ler o erro → refatorar → re-testar → tentar de novo, tudo localmente, antes de qualquer push. Isso evita gastar um ciclo de CI/CD remoto (mais lento) só para descobrir um problema que podia ter sido pego na própria máquina do desenvolvedor.
+
 ## Dia 5 — *(a iniciar)*
