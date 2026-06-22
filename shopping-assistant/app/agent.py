@@ -14,15 +14,25 @@
 # limitations under the License.
 
 import os
+from pathlib import Path
 from typing import Dict
 
+from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.apps import App
 from google.adk.models import Gemini
 
-# Simulated vulnerability: unsafe hardcoded API key introduced in initial draft code.
-# This will be caught and fixed later by our Semgrep pre-commit gate (Section 10).
-os.environ["GOOGLE_API_KEY"] = "AIzaSyD-mock-key-value-12345"
+# Section 10 fix: load GOOGLE_API_KEY securely from a git-ignored .env file
+# instead of hardcoding it in source. See app/.env (never committed) and
+# app/.env.example (placeholder, safe to commit) for the expected format.
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+if not os.environ.get("GOOGLE_API_KEY"):
+    raise RuntimeError(
+        "GOOGLE_API_KEY is not set. Create shopping-assistant/app/.env "
+        "(see app/.env.example) with a real key from https://aistudio.google.com/apikey."
+    )
+
 model = Gemini(model="gemini-3.1-flash-lite")
 
 # In-memory discount redemption store (simulating database state).
