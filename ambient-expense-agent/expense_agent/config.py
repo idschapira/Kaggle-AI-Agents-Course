@@ -26,4 +26,4 @@ AUTO_APPROVE_THRESHOLD_USD: float = 100.0
 # Model used ONLY for the risk-judgment step (review_agent). It never makes
 # the routing/approval decision itself - that stays in Python and with the
 # human reviewer.
-RISK_REVIEW_MODEL: str = "gemini-3.1-flash-lite"
+RISK_REVIEW_MODEL: str = "gemini-2.5-flash-lite"

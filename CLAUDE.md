@@ -60,6 +60,83 @@ exatamente esta sequência — nunca improvise um comando alternativo:
    runner): alertar o usuário na hora e instruir revogação em
    https://aistudio.google.com/apikey antes de gerar uma nova.
 
+## Checklist do usuário: como autenticar o agents-cli sem stress (manual rápido)
+Isto é o passo a passo pra **você (humano)** seguir sempre que precisar logar ou
+relogar o `agents-cli` — destilado de todos os incidentes do Dia 3 e Dia 5.
+Claude (chat ou Code) nunca deve participar da etapa 2.
+
+1. **Abra um terminal Ubuntu/WSL "de verdade"** — ícone do Ubuntu, ou `wsl` a
+   partir do Windows Terminal. **Nunca** use a aba "Code" embutida do Cowork
+   nem o runner `!` de dentro de uma sessão de IA pra essa etapa: nenhuma
+   superfície de agente é segura pra isso, e a aba Code já demonstrou rodar em
+   ambiente inconsistente (PowerShell em vez de WSL, shell não-interativo que
+   não carrega `.bashrc`).
+2. **Confira se a variável já existe** (sem mostrar o valor):
+   ```bash
+   [ -n "$GEMINI_API_KEY" ] && echo "definida" || echo "vazia"
+   ```
+3. **Se estiver vazia ou a chave foi revogada**, edite o `~/.bashrc` direto
+   (nunca cole a chave em nenhum chat de IA):
+   ```bash
+   sed -i '/GEMINI_API_KEY/d' ~/.bashrc
+   echo 'export GEMINI_API_KEY="SUA_CHAVE_AQUI"' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+4. **Logue o `agents-cli` nesse mesmo terminal puro:**
+   ```bash
+   agents-cli login -i
+   ```
+   (escolha a opção **Gemini API Key**). Confirme com:
+   ```bash
+   agents-cli login --status
+   ```
+5. **Só depois de ver "autenticado" no passo 4**, abra/reabra o Claude Code
+   (terminal ou aba Code) — ele herda a autenticação automaticamente, sem
+   nunca precisar ver a chave.
+6. **Se o `agents-cli: command not found` aparecer** num terminal novo mesmo
+   depois de tudo isso: é quase certo que esse terminal não está carregando o
+   `~/.bashrc` (ex.: é a aba Code, não um terminal nativo). Diagnóstico rápido:
+   ```bash
+   cat ~/.profile | grep -A3 bashrc   # confirma o encadeamento .profile→.bashrc
+   source ~/.bashrc                    # corrige a sessão atual na hora
+   which agents-cli                    # deve apontar pra ~/.local/bin/agents-cli
+   ```
+
+## Checklist do usuário: ADC (gcloud) — necessário antes de qualquer deploy
+Autenticação do `agents-cli`/Gemini API Key (checklist acima) é **separada** da
+autenticação do `gcloud`/ADC (Application Default Credentials) — comandos como
+`agents-cli deploy` precisam das duas. Faltar a ADC dá um erro de import
+(`google.auth.default()` sem credenciais), não um erro óbvio de "não logado".
+
+1. **Antes de rodar qualquer `agents-cli deploy` (real ou `--dry-run` que
+   precise importar o app), verifique a ADC primeiro**, num terminal puro:
+   ```bash
+   gcloud auth application-default print-access-token
+   ```
+   Deve imprimir um token longo (não um erro). **Não cole esse token em
+   nenhum chat de IA** — é só pra confirmar visualmente que funcionou.
+2. **Se der erro** (sem credenciais), autentique manualmente, no mesmo
+   terminal puro, fora de qualquer sessão de agente:
+   ```bash
+   gcloud auth application-default login
+   gcloud config set project kaggle-dia5-agent-runtime
+   ```
+3. Só depois de confirmar o passo 1 com sucesso, volte para o Claude Code (ou
+   abra uma sessão nova — ela herda a ADC automaticamente) e siga com o
+   deploy.
+
+**Atenção — split WSL/Windows:** `gcloud` está instalado só no WSL; `agents-cli`
+corre como binário Windows. As credenciais ADC do WSL ficam em
+`//wsl$/Ubuntu/home/ilanschapira/.config/gcloud/application_default_credentials.json`
+e são **invisíveis** para o processo Windows por padrão. Solução: antes de
+rodar `agents-cli deploy` a partir do Claude Code / Bash tool, exporte:
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="//wsl$/Ubuntu/home/ilanschapira/.config/gcloud/application_default_credentials.json"
+export GOOGLE_CLOUD_PROJECT="kaggle-dia5-agent-runtime"
+```
+(Claude Code faz isso automaticamente agora — veja os deploys registados no
+`Diário_Aprendizado.md`.)
+
 ## Contexto do projeto
 Curso: Kaggle "5-Day AI Agents". Progresso completo documentado em
 `Diário_Aprendizado.md` na raiz desta pasta — leia esse arquivo antes de
