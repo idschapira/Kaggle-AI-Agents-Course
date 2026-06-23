@@ -484,4 +484,52 @@ Todos os 6 casos passaram como esperado.
 
 ---
 
-## Dia 5 (continuação) — *(codelabs pendentes)*
+## Dia 5 (continuação) — Codelab: Deploy ADK agent to Agent Runtime using Agents CLI
+
+**Data:** 2026-06-22
+
+**Objetivo da tarefa:** Codelab [Deploy an ADK agent to Agent Runtime using Agents CLI](https://codelabs.developers.google.com/enterprise-cloud-scale-deploying-the-expense-agent-to-agent-runtime-on-google-cloud) — sair do desenvolvimento local e publicar um agente em produção real no Google Cloud (Agent Runtime), com telemetria automática via Cloud Trace.
+
+**Mudança de ferramenta combinada com o usuário:** o codelab é desenhado em torno do **Antigravity IDE** (que executa os comandos `gcloud`/`uv`/`agents-cli` sozinho a partir de um prompt em linguagem natural). Como o usuário já está migrando para o fluxo do Capstone, decidimos trocar o Antigravity pelo **Claude Code**, rodando direto no terminal WSL — mesmo princípio (um agente de IA com acesso de execução real ao terminal), só que com o Claude no lugar do Antigravity. Combinado: a partir de agora, os prompts equivalentes aos do codelab são colados no Claude Code, e eu (Claude/Cowork) seguimos no papel de tutor — orientando, explicando erros e documentando, mas sem executar os comandos eu mesmo (sandbox isolado da máquina real do usuário).
+
+**Seção 2 (Setup do ambiente Google Cloud) — concluída:**
+- Criada uma **conta de billing nova** no Google Cloud Console (passo manual, só dá via navegador) — vinculado um cartão para verificação; créditos gratuitos de $300 válidos por 90 dias.
+- Criado o projeto `kaggle-dia5-agent-runtime` via `gcloud projects create`.
+- Billing vinculado ao projeto: `gcloud billing projects link kaggle-dia5-agent-runtime --billing-account=...`.
+- Habilitadas as APIs necessárias: `aiplatform`, `cloudtrace`, `cloudbuild`, `agentregistry`, `run`, `artifactregistry` (`gcloud services enable ...`).
+- Autenticadas as **Application Default Credentials (ADC)**: `gcloud auth application-default login` + `gcloud auth application-default set-quota-project kaggle-dia5-agent-runtime`.
+- **Nota para o Capstone:** a conta de billing **não precisa ser recriada** — é reutilizável entre projetos. Para o Capstone, só será necessário criar (ou reaproveitar) um projeto GCP novo e vincular essa mesma conta de billing já existente.
+
+**Seção 3 (Instalar `agents-cli` + skills do ADK) — concluída, via Claude Code:**
+- Rodado `uvx google-agents-cli setup` (versão instalada: 0.5.0) — instalou os 7 skills oficiais do ADK globalmente em `~/.agents/skills/`, symlinkados automaticamente no Claude Code.
+- Validado com `agents-cli info` (nota: esse comando só lista skills no **escopo do projeto atual**; "Installed skills: none" é esperado quando não há projeto ainda — os skills globais continuam ativos).
+- Autenticação separada necessária: `agents-cli auth login` (diferente da autenticação `gcloud`/ADC da Seção 2) — feita com sucesso.
+
+**⚠️ Incidente de segurança — chave de API exposta no chat:**
+Durante o processo de autenticação do `agents-cli`, o Claude Code sugeriu um comando que fez o usuário colar a **API key do Gemini em texto puro no chat, duas vezes**. O próprio Claude Code identificou o problema e instruiu a revogação imediata em `https://aistudio.google.com/apikey`, geração de uma chave nova, e instruções para persistir a chave nova de forma segura como variável de ambiente de usuário no Windows (`[System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", "...", "User")`) — fora do histórico de chat.
+
+**Lição central (para não repetir no Capstone):**
+- **Nunca aceitar comandos de terminal sugeridos por um agente de IA que peçam para colar/digitar uma chave de API, token ou segredo diretamente na conversa de chat** — o histórico do chat pode ser logado/persistido, então qualquer segredo colado ali deve ser considerado potencialmente comprometido, mesmo que a sessão pareça privada.
+- **Forma seguro de passar um segredo para uma ferramenta CLI:** sempre via variável de ambiente persistida fora do chat (`.env` não versionado, ou variável de ambiente de usuário no SO) — nunca como argumento de linha de comando ou texto colado na conversa com o agente.
+- **Procedimento ao expor uma chave por engano:** revogar a chave antiga imediatamente (mesmo já tendo gerada uma nova) e gerar uma substituta — esse é o mesmo padrão de boa prática já registrado no Dia 3 (chave exposta durante debug) e agora reforçado pela segunda vez.
+- Essa lição já tinha aparecido uma vez no Dia 3 (Codelab 1, Seção 6) — reforça que é um erro fácil de repetir mesmo sabendo da regra, especialmente quando o próprio agente de IA sugere o comando errado. Vale tratar como checklist mental fixo antes de rodar qualquer comando de autenticação sugerido por um agente.
+
+**⚠️ Atualização do incidente — a chave vazou de novo (2ª e 3ª vez na mesma sessão) e a causa raiz era diferente do que parecia:**
+- Mesmo depois de revogar e trocar a chave, ela vazou **de novo** porque o `~/.bashrc` do WSL ainda tinha o valor **antigo** hardcoded (de uma sessão anterior, Dia 3) — e o Windows não propaga variáveis de ambiente do PowerShell (`SetEnvironmentVariable`) automaticamente para dentro do WSL (são dois sistemas operacionais distintos; o WSL não herda env vars arbitrárias do Windows).
+- **Erro meu (Claude/Cowork) que precisa ficar registrado:** eu disse para o usuário que o **`!` runner do Claude Code** (executar comandos shell com prefixo `!` dentro da sessão do agente) seria um canal seguro para digitar a chave, por não passar "pelo modelo". **Isso estava errado** — o `!` runner registra o comando inteiro (incluindo a chave) no log/transcript da sessão do agente, exatamente como uma mensagem de chat normal. A chave vazou uma 3ª vez por causa dessa orientação incorreta.
+- **Regra corrigida e definitiva:** nenhuma superfície de interação com um agente de IA (chat normal, `!` runner, ou qualquer variação) é segura para digitar um segredo. O único canal seguro é editar a variável de ambiente **fora da sessão do agente** — direto no terminal puro (ex.: `sed -i '/GEMINI_API_KEY/d' ~/.bashrc && echo 'export GEMINI_API_KEY="..."' >> ~/.bashrc && source ~/.bashrc`) ou num editor de texto gráfico (Cursor/VS Code) aberto separadamente — e then reiniciar a sessão do agente para que ela herde a variável já definida.
+- **Nota de UX (Cursor):** tentamos abrir o `~/.bashrc` no Cursor via `Ctrl+P` (Quick Open), que só busca arquivos **dentro da pasta do projeto já aberta** — não encontrou, porque o `.bashrc` fica na home do Linux, fora do projeto. O atalho certo para abrir um arquivo de qualquer caminho é `Ctrl+O` (Open File) com o caminho completo digitado na caixa de diálogo. No fim, a solução mais simples e definitiva foi resolver tudo via `sed`/`echo` direto no terminal Ubuntu puro (sem GUI nenhuma), evitando tanto o `nano` quanto o Cursor.
+- Resolvido com sucesso: chave atualizada no `~/.bashrc`, `agents-cli login -i` (opção Gemini API Key) re-autenticado a partir de uma sessão nova do Claude Code (aberta depois da correção, herdando a variável automaticamente).
+
+**Status:** Seção 2 e Seção 3 do codelab concluídas (com o incidente de segurança acima totalmente resolvido). Próximas etapas (Seção 4 em diante: scaffold do `expense-agent`, deploy no Agent Runtime, testes, observabilidade) pendentes para a próxima sessão.
+
+**Atualização (2026-06-23) — Protocolo de login seguro formalizado no `CLAUDE.md` + novo bug de PATH resolvido:**
+- Adicionada ao `CLAUDE.md` uma seção nova, "Protocolo de login seguro do agents-cli / gcloud", com o passo a passo explícito que qualquer sessão do Claude Code deve seguir: (1) rodar só comando de status, nunca de login; (2) se autenticado, seguir; (3) se não autenticado, parar e devolver ao usuário a instrução para autenticar manualmente fora da sessão; (4) nunca montar/digitar um comando com o valor literal de uma chave, nem no chat nem no `!` runner; (5) se precisar editar uma variável de ambiente, instruir edição num terminal puro fora da sessão do agente; (6) se uma chave aparecer exposta, alertar e instruir revogação imediata. Formaliza em regra escrita o que já tinha sido corrigido "na prática" nos incidentes anteriores.
+- **Novo bug de PATH (mesma família do já catalogado no Dia 3, mas com causa um pouco diferente):** ao rodar `agents-cli login --status` num terminal WSL puro (fora de qualquer agente, seguindo o protocolo acima), apareceu `agents-cli: command not found`. Diagnóstico (`which uv`, `echo $PATH`, `ls ~/.local/bin | grep -i agent`) revelou que o `$PATH` ativo continha só a versão **Windows** do `.local/bin` (`/mnt/c/Users/ilans/.local/bin`, herdada do PATH do Windows via interop do WSL), e **não** o `~/.local/bin` **nativo do Linux** (`/home/ilanschapira/.local/bin`) — onde o `uv tool` de fato instalou os binários (`agents-cli`, `google-agents-cli`), confirmados existentes via `ls`.
+- **Correção:** `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc`. Resolvido — `agents-cli login --status` passou a funcionar e a autenticação foi confirmada com sucesso direto no terminal puro, sem nenhum agente de IA envolvido na etapa sensível.
+- **Lição (distinção fina do bug do Dia 3):** no Dia 3, o problema era o PATH do Windows simplesmente não ter a pasta de binários do `uv`. Aqui, o ambiente é WSL — que importa automaticamente o PATH do Windows por interop —, e isso mascarou o problema: existem **dois** `.local/bin` possíveis (um por sistema operacional) e o WSL pode estar "vendo" o do lado errado se o `~/.bashrc` não fixar explicitamente o nativo primeiro.
+
+**Glossário do dia:**
+- **Billing Account (Conta de faturamento):** entidade do GCP vinculada a um cartão de pagamento; pode ser vinculada a múltiplos projetos (1 conta → N projetos), não precisa ser recriada por projeto.
+- **ADC (Application Default Credentials) vs. autenticação do `agents-cli`:** são dois sistemas de autenticação independentes — ADC autentica bibliotecas Google Cloud (`gcloud`/`google.auth`); o login do `agents-cli` (`agents-cli auth login`) autentica especificamente o toolchain de deploy/skills do ADK. Fazer um não dispensa o outro.
+- **`uvx` vs. instalação global:** `uvx google-agents-cli setup` executa o instalador uma vez e deixa os 7 skills do ADK disponíveis globalmente (`~/.agents/skills/`), sem precisar reinstalar por projeto.
