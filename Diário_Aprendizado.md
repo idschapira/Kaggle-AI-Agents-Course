@@ -699,3 +699,21 @@ Depuração longa, em etapas, até achar a causa raiz verdadeira (registrando o 
 **Lição central pro Capstone:** un dos bugs mais traiçoeiros desse curso é justamente esse — um `.venv` (ou qualquer artefato de build) criado por um lado do ambiente híbrido Windows/WSL pode ser **silenciosamente reaproveitado** pelo outro lado, porque "criar e rodar" parecem ter funcionado sem erro nenhum (sem crash, sem aviso) — só o comportamento de runtime (aqui, onde a ADC é procurada) é que denuncia a mistura. Sempre que um bug de ambiente parecer "impossível" (testou isolado e funcionou, mas o serviço real continua falhando do mesmo jeito), vale checar se existe algum artefato (`.venv`, `node_modules`, cache de build) que possa ter sido gerado pelo SO errado.
 
 **Status: RESOLVIDO (2026-06-24).** Confirmado pelo usuário — após esperar o setup inicial (import/compile das libs do Google), o `uvicorn` subiu normalmente sob `networkingMode=mirrored`, sem travar de verdade (era só lentidão pontual, como suspeitado). Daqui em diante, `http://localhost:8080` funciona direto no navegador Windows, sem precisar mais descobrir o IP do WSL via `hostname -I` a cada reinício. Item fechado.
+
+### Seção 4 (concluída) — Deploy do dashboard no Cloud Run
+
+**Prompt enviado ao Claude Code:** deploy de `submission_frontend/` como serviço `expense-manager-dashboard` no Cloud Run, com `GOOGLE_CLOUD_PROJECT` e `AGENT_RUNTIME_ID` como env vars, acesso público (`--allow-unauthenticated`), e concessão de `roles/aiplatform.user` ao service account de runtime do serviço.
+
+**Execução:**
+- Não havia `Dockerfile` no projeto — Claude Code criou um (`python:3.11-slim` + `uv sync --frozen` + `uvicorn` na porta 8080) e um `.dockerignore` (excluindo `.venv/` e `__pycache__/` do contexto de build).
+- Deploy via `gcloud run deploy --source` (Cloud Build builda a imagem a partir do Dockerfile) — sucesso, URL gerada: `https://expense-manager-dashboard-17805413958.us-east1.run.app`.
+- IAM concedido ao service account de runtime (`17805413958-compute@developer.gserviceaccount.com`): `roles/aiplatform.user`.
+
+**Bug pós-deploy: 502 em `/api/pending` — mas causa raiz diferente da Seção 3.** Importante notar: não era mais o bug do `.venv` Windows/WSL (o container do Cloud Run é Linux limpo, criado do zero pelo Dockerfile — não tem como herdar ambiente misto). Em vez de adivinhar, pedimos o corpo JSON real do erro (via `curl` direto, não pelo navegador) antes de qualquer fix — lição já aplicada da saga anterior.
+
+- **Causa raiz real:** erro de digitação humano no comando de deploy. O `AGENT_RUNTIME_ID` passado via `--set-env-vars` tinha um dígito errado no final do Reasoning Engine ID (`...1821600496155099` **`0`** `136` em vez do correto `...1821600496155099` **`9`** `136`). O `VertexAiSessionService` tentava consultar um Reasoning Engine que não existe nesse projeto → erro 404 da API do Vertex AI → capturado pelo `except Exception` do endpoint e relançado como 502.
+- **Fix:** `gcloud run services update` só pra corrigir a env var (sem rebuild de imagem — Cloud Run cria uma nova revisão em segundos, sem precisar passar pelo Cloud Build de novo). Confirmado pelo usuário: dashboard voltou a mostrar "All caught up!" sem erros.
+
+**Lição:** nem todo 502 tem a mesma causa — mesmo sintoma (502 em `/api/pending`), causas completamente diferentes em dois deploys (Seção 3: ambiente Windows/WSL misturado; Seção 4: erro de digitação num ID de 19 dígitos). Sempre puxar o corpo de erro real (`curl`/logs) antes de reaplicar uma hipótese só porque "deu o mesmo número de erro" antes.
+
+**Status:** Seção 4 concluída — dashboard publicado e funcionando em `https://expense-manager-dashboard-17805413958.us-east1.run.app`. Próximo passo: Seção 5 (criar os tópicos Pub/Sub `expense-reports` e `expense-reports-dead-letter`).
