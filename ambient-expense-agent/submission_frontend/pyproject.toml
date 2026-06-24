@@ -1,0 +1,18 @@
+[project]
+name = "expense-manager-dashboard"
+version = "0.1.0"
+description = "Manager dashboard for reviewing paused Agent Runtime expense sessions"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "google-adk>=1.0.0",
+    "google-cloud-aiplatform>=1.70.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false

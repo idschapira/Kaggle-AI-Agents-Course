@@ -602,3 +602,100 @@ Teste pedido: caso 1 (despesa de refeição de $50, esperando aprovação autom�
 - **Agent Registry vs. Gemini Enterprise:** Agent Registry é o inventário de agentes do GCP (automático em todo deploy); Gemini Enterprise é uma camada de publicação separada, opcional, que exige passo manual extra. Estar num não implica estar no outro.
 - **Disponibilidade por região vs. por plataforma (Vertex AI vs. Gemini API):** um modelo pode existir e funcionar numa plataforma (ex.: Gemini API/AI Studio) mas não estar disponível ainda na outra (Vertex AI) ou só em certas regiões dentro dela — erro 404 não significa necessariamente "modelo não existe", pode ser "não disponível aqui/agora".
 - **`adk_request_input` (evento de pause HITL):** evento emitido pelo ADK quando o grafo chega num nó que precisa de aprovação humana — sinaliza que a execução está pausada esperando uma decisão externa, com um ID de interrupção único pra retomar depois.
+
+---
+
+## Dia 5 (continuação) — Codelab: Vibecode and Deploy a Frontend for an ADK Agent
+
+**Data:** 2026-06-24
+
+### ⚠️ CAUSA RAIZ DEFINITIVA do bug de PATH/login "que volta todo dia" — RESOLVIDO PERMANENTEMENTE
+
+Depois de 2 dias caçando esse bug como se fosse só PATH faltando, achamos a causa real: o `~/.bashrc` estava **estruturalmente corrompido** — vários blocos `if`/`fi` e o `case "$TERM"`/`esac` do bashrc padrão do Ubuntu tinham perdido suas linhas de fechamento (provavelmente de uma edição automática anterior, um `sed` que removeu linhas curtas como `fi` por engano). Isso quebrava o parsing do arquivo **inteiro** antes de chegar na linha 96, onde estava o `export PATH="$HOME/.local/bin:$PATH"` — por isso `agents-cli` nunca entrava no PATH em terminais novos, mesmo a linha de PATH estando lá. Não era mais o bug "PATH simples" do Dia 5 anterior — era o arquivo em si quebrado.
+
+**Diagnóstico:** `cat -n ~/.bashrc | sed -n '1,200p'` revelou os blocos com `if`/`fi`/`esac` desbalanceados, comparado à estrutura padrão do `.bashrc` do Ubuntu.
+
+**Correção aplicada (permanente, não remendo):** reescrita completa do `~/.bashrc` com a estrutura padrão íntegra do Ubuntu + as customizações do usuário preservadas no final (fonte do `uv`, `UV_PROJECT_ENVIRONMENT`, `GEMINI_API_KEY`, sourcing do Google Cloud SDK, `export PATH`). Script salvo em `scripts/fix_bashrc.sh` no repositório, com backup automático do arquivo antigo antes de sobrescrever. Validado com sucesso: `which agents-cli` → `/home/ilanschapira/.local/bin/agents-cli`; `agents-cli login --status` → `Authenticated as Gemini API Key (GEMINI_API_KEY)`.
+
+**Expectativa para sessões futuras:** como a correção é estrutural (sintaxe do arquivo, não um valor de ambiente temporário), o bug não deve voltar em terminais novos — `source ~/.bashrc`/abrir um terminal novo deve carregar `agents-cli` no PATH de forma consistente a partir de agora. Único risco residual: se uma edição futura (manual ou via agente) tocar o `~/.bashrc` de forma desestruturada (ex.: `sed` mal calibrado, ou colar bloco de código cortado), o mesmo tipo de corrupção pode se repetir — preferir sempre `echo '...' >> ~/.bashrc` (append simples, uma linha) a edições que reescrevem blocos inteiros, e sempre validar com `bash -n ~/.bashrc` (checagem de sintaxe sem executar) depois de qualquer edição manual.
+
+### ⚠️ 4º vazamento de API key no curso — desta vez via dump de dotfile no chat (Cowork, não Claude Code)
+
+Durante o diagnóstico acima, pedi ao usuário para colar o conteúdo do `~/.bashrc` no chat (`cat -n ~/.bashrc | sed -n '40,200p'`) para eu conseguir ver a estrutura quebrada — e a linha `export GEMINI_API_KEY="..."` veio em texto puro no meio do output, expondo a chave de novo (1ª vez Dia 3, 2ª e 3ª vez Dia 5 anterior, agora a 4ª, e a primeira que não envolveu o Claude Code/`agents-cli auth`, e sim um simples `cat` de diagnóstico pedido por mim/Cowork).
+
+- Chave revogada e trocada pelo usuário, atualizada com sucesso no `~/.bashrc` novo (via `nano`, fora da sessão do agente) e no `.env` do `ambient-expense-agent`.
+- **Lição nova, já incorporada à memória do projeto:** ao pedir para o usuário despejar um arquivo de configuração (`.bashrc`, `.env`, etc.) no chat para diagnóstico, sempre instruir um comando que mascare linhas com `KEY`/`TOKEN`/`SECRET`/`PASSWORD` antes de colar — ex.: `grep -v -iE 'key|token|secret|password' ~/.bashrc` ou um `sed` que substitua o valor por `***`. O dump bruto de um dotfile é tão arriscado de expor segredo quanto um comando de login mal-sugerido — a regra de "nenhuma superfície de agente é segura para segredos" vale também para leitura/diagnóstico, não só para digitação.
+
+### Outros locais no repositório com a mesma variável (checar se usam a mesma chave revogada)
+
+Levantamento feito por busca no repositório (`grep -l GEMINI_API_KEY\|GOOGLE_API_KEY`), sem expor nenhum valor:
+- `ambient-expense-agent/.env` (`GOOGLE_API_KEY`) — **já atualizado pelo usuário nesta sessão.**
+- `shopping-assistant/app/.env` (`GOOGLE_API_KEY`) — **pendente de verificação**: se esse `.env` usa o mesmo valor de chave que foi revogado, precisa ser atualizado também (o `shopping-assistant` é de uma sessão anterior do curso, pode estar com chave antiga há mais tempo).
+- `apps/dia1_pokeasset_manager/.env` (`GEMINI_API_KEY` + `POKEWALLET_API_KEY`) — projeto do Dia 1, separado; verificar se usa a mesma chave do Gemini ou uma chave própria antes de decidir se precisa trocar.
+- `weather-assistant` e `customer-support-agent` não têm `.env` próprio (usam variável de ambiente do shell/`~/.bashrc` diretamente).
+
+**Status:** bug de PATH/login resolvido na causa raiz; rotação de chave em andamento (1 de pelo menos 3 locais confirmados atualizado). Codelab de frontend (Pub/Sub + Manager Dashboard + Cloud Run) ainda não iniciado — próximo passo é rodar os 3 prompts de reconexão (Seção 2) no Claude Code.
+
+### ⚠️ 2º bug de infraestrutura no mesmo dia: WSL inteiro quebrado por causa do Docker Desktop (distro padrão errada)
+
+Ao tentar rodar o Prompt 2 (setup do Google Cloud) no Claude Code, o WSL parou de funcionar por completo — `getpwuid(0) failed`, `Failed to mount C:\`, `execvpe(/bin/sh) failed: No such file or directory` — em qualquer tentativa de abrir um terminal, mesmo depois de `wsl --shutdown`, `wsl --update` e **reinício completo do Windows**.
+
+**Causa raiz real:** `wsl --status` revelou que a **distro padrão do WSL tinha virado `docker-desktop-data`** (provavelmente trocada silenciosamente por uma atualização/reinício do Docker Desktop) em vez de `Ubuntu`. `docker-desktop-data` é uma distro interna do Docker só para guardar volumes — não tem shell, não tem `/bin/sh`, não tem usuários normais. Quando o comando `wsl` (sem `-d <nome>`) tentava abrir a distro padrão, caía nessa distro vazia, daí todos os erros (que pareciam corrupção grave de sistema, mas eram só "abrir a distro errada").
+
+**Correção (uma linha, sem reinstalar nada):**
+```powershell
+wsl --set-default Ubuntu
+```
+Confirmado com `wsl --list --verbose` (Ubuntu marcado com `*`) e `wsl` abrindo o terminal normalmente depois.
+
+**Lição para o Capstone:** se o WSL "quebrar do nada" com erros de mount/getpwuid, antes de qualquer reinstalação ou reinício, checar `wsl --status` → `Default Distribution`. Se não for a distro de trabalho esperada (`Ubuntu`), é só `wsl --set-default <nome-certo>` — resolve na hora, sem perder nada. Ter o Docker Desktop instalado no mesmo Windows que o WSL de desenvolvimento é uma fonte conhecida desse tipo de conflito de distro padrão.
+
+**Efeito colateral:** depois desse boot novo da distro, a sessão do Claude Code anterior (com as skills do ADK já carregadas) foi perdida — precisou recomeçar a Seção 2 do zero a partir do Prompt 1 (reload de skills), agora com sucesso. Seção 2 do codelab de frontend (skills, Google Cloud env, confirmação do agente implantado) **concluída** nesta retomada.
+
+**Status atualizado:** Seção 2 do codelab "Vibecode and Deploy a Frontend for an ADK Agent" concluída — skills carregadas, projeto `kaggle-dia5-agent-runtime` confirmado com as 4 APIs habilitadas (`aiplatform`, `run`, `pubsub`, `cloudbuild`), e o Agent Runtime existente (`reasoningEngines/1821600496155099136`, `us-east1`) confirmado sem alteração de código. Próximo passo: avançar para a Seção 3 do codelab (arquitetura do pipeline Pub/Sub + Manager Dashboard).
+
+### ⏳ PENDÊNCIA — rotação de chave incompleta (lembrete para retomar)
+
+Do incidente do 4º vazamento (acima): só `ambient-expense-agent/.env` foi confirmado atualizado com a chave nova. **Ainda faltam verificar/trocar:**
+- `shopping-assistant/app/.env` (`GOOGLE_API_KEY`) — projeto do Dia 4, pode estar com a chave revogada há mais tempo.
+- `apps/dia1_pokeasset_manager/.env` (`GEMINI_API_KEY` + `POKEWALLET_API_KEY`) — confirmar se usa a mesma chave do Gemini revogada ou uma chave própria.
+
+**Decisão do usuário (2026-06-24):** resolver isso depois, fora do fluxo atual do codelab de frontend. Manter este lembrete até confirmação de que os dois `.env` foram corrigidos.
+
+### Seção 3 (em andamento) — Manager Dashboard (`submission_frontend/`)
+
+**Prompt enviado ao Claude Code:** vibe-coding de um serviço FastAPI standalone em `submission_frontend/`, com 3 endpoints — `GET /` (dashboard HTML com visual glassmorphism), `GET /api/pending` (consulta o `VertexAiSessionService` do ADK, lista sessões, identifica eventos `adk_request_input` sem resposta correspondente) e `POST /api/action/{session_id}` (retoma a sessão pausada no Agent Runtime, enviando a `function_response` do interrupt).
+
+**Resultado:**
+- Gerados `submission_frontend/pyproject.toml` e `submission_frontend/main.py` (~940 linhas).
+- **Bug de build 1:** `google-adk[vertexai]` — o extra `vertexai` não existe na versão instalada (2.3.0). Corrigido removendo o extra, mantendo só `google-adk>=1.0.0`.
+- **Bug de build 2:** o `hatchling` (build backend padrão) falhou porque o projeto é um app single-file, não um pacote instalável — não existe pasta com o nome do projeto pra ele empacotar. Corrigido com `[tool.uv]\npackage = false` no `pyproject.toml`, que diz ao `uv` para só montar o `.venv` com as dependências, sem tentar buildar um wheel.
+- Servidor validado subindo (`Application startup complete`) depois dos dois fixes.
+- **Bug em teste manual:** `GET /api/pending` retornou **502**. Traceback completo capturado: `google.auth.exceptions.DefaultCredentialsError` — **o mesmo bug de split Windows/WSL já catalogado nesta sessão** (Seção "Atualização — Bug de ambiente split Windows/WSL no `agents-cli deploy`"): o servidor `uvicorn` está rodando como processo Windows (PowerShell/Bash tool), mas a ADC só existe no filesystem do WSL. **Fix indicado (ainda não confirmado se resolveu):** exportar antes de subir o servidor:
+  ```bash
+  export GOOGLE_APPLICATION_CREDENTIALS="//wsl$/Ubuntu/home/ilanschapira/.config/gcloud/application_default_credentials.json"
+  export GOOGLE_CLOUD_PROJECT="kaggle-dia5-agent-runtime"
+  export AGENT_RUNTIME_ID="projects/17805413958/locations/us-east1/reasoningEngines/1821600496155099136"
+  ```
+  (Alternativa mais limpa para o Capstone, já registrada antes: rodar o `uvicorn` direto de dentro do WSL, onde a ADC já é encontrada nativamente, sem precisar do caminho UNC.)
+
+**Atualização (2026-06-24) — a saga completa do 502 (export não foi a causa real; causa raiz era um `.venv` Windows misturado dentro do projeto WSL):**
+
+Depuração longa, em etapas, até achar a causa raiz verdadeira (registrando o caminho percorrido, porque várias hipóteses descartadas também são lição útil):
+
+1. **Hipótese 1 (descartada): `GOOGLE_APPLICATION_CREDENTIALS` com caminho UNC sobrando.** O `export` do caminho `//wsl$/...` (pensado pro lado Windows) tinha ficado no `~/.bashrc` e "vazava" pra dentro do próprio WSL, fazendo o `gcloud` procurar a ADC num caminho que não existe visto de dentro do Linux. Removido com `unset` + `sed` no `~/.bashrc` — mas o 502 **continuou idêntico** mesmo depois.
+2. **Hipótese 2 (descartada): processo `uvicorn` velho ainda rodando.** Suspeitamos de um processo zumbi do lado **Windows** (sobrando de testes anteriores do Claude Code via PowerShell/Bash tool). Confirmado via `netstat -ano` no PowerShell: 2 processos na porta 8080 e 1 na 8081, todos mortos com `Stop-Process`. Um PID (`3872`) "fantasma" continuou aparecendo no `netstat` do Windows mas o `Get-Process` não o achava — explicado depois como artefato do *localhost forwarding* do WSL2 (um processo Linux aparece no `netstat` do Windows com um PID que não existe no namespace do Windows).
+3. **Teste isolado que confundiu a investigação:** rodamos `vertexai.init()` + `VertexAiSessionService.list_sessions()` direto em Python (fora do FastAPI) e funcionou (`sessions=[]`). Depois até um `curl 127.0.0.1:8080/api/pending` direto de dentro do WSL retornou sucesso (`{"pending":[]}`) — o que indicava (erradamente) que o servidor estava saudável e o problema era só o navegador/roteamento Windows↔WSL.
+4. **Causa raiz real, achada pelo Claude Code ao investigar com calma:** a pasta `submission_frontend/.venv` tinha sido criada **antes**, quando o Claude Code rodou `uv run uvicorn` via PowerShell/Bash tool (processo Windows) — esse `.venv` continha um Python **Windows PE32+** (`Scripts/python.exe`, sem pasta `bin/`). Quando o `uv` nativo do WSL rodava depois, ele **reaproveitava esse `.venv` existente** em vez de criar um novo — então, mesmo "rodando no WSL", o interpretador real era o do Windows, que só sabe procurar ADC em `%APPDATA%\gcloud\...`, nunca em `~/.config/gcloud/`. Isso explica por que nenhum ajuste de variável de ambiente resolvia: o processo certo nunca tinha chance de achar a credencial certa, e o `curl`/teste isolado do passo 3 só "funcionaram" por terem usado um Python diferente (ou uma execução pontual antes da reentrada no `.venv` quebrado).
+5. **Fix aplicado:** apagar o `.venv` quebrado (precisou matar um `uvicorn` que ainda segurava o arquivo) e deixar o `uv` nativo do WSL (`~/.local/bin/uv`, não o `uv` "pelado" que resolve pro binário Windows via interop) recriar um `.venv` Linux do zero.
+6. **Bug seguinte, de rede:** depois do `.venv` novo, o `uvicorn` (bindado em `127.0.0.1`) ficou inacessível do navegador Windows (`ERR_CONNECTION_REFUSED`) — resolvido temporariamently subindo com `--host 0.0.0.0` e acessando pelo IP do WSL (`hostname -I`, ex.: `172.28.243.96`) em vez de `localhost`. **Confirmado funcionando** — dashboard carregou (`Expense Approvals`, "All caught up!").
+7. **Fix permanente em teste:** para não depender do IP do WSL (que muda a cada reinício), ativado o modo de rede **mirrored** do WSL2 via `C:\Users\ilans\.wslconfig`:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+   seguido de `wsl --shutdown`. **Efeito colateral observado:** o `uvicorn` ficou "travado" depois de `Will watch for changes...`, sem avançar — diagnóstico de rede (`ping`, `cat /etc/resolv.conf`, `curl https://oauth2.googleapis.com`) confirmou que a rede/DNS do WSL **não** quebrou com o mirrored mode (handshake TLS completo, sem demora). Hipótese atual: só demora normal de import das libs pesadas (`google-cloud-aiplatform`/`vertexai`) recompilando bytecode logo após o `.venv` ter sido recriado — em teste, sem `--reload`, aguardando mais tempo antes de concluir se precisa ou não do `dnsTunneling=true` extra no `.wslconfig`.
+
+**Lição central pro Capstone:** un dos bugs mais traiçoeiros desse curso é justamente esse — um `.venv` (ou qualquer artefato de build) criado por um lado do ambiente híbrido Windows/WSL pode ser **silenciosamente reaproveitado** pelo outro lado, porque "criar e rodar" parecem ter funcionado sem erro nenhum (sem crash, sem aviso) — só o comportamento de runtime (aqui, onde a ADC é procurada) é que denuncia a mistura. Sempre que um bug de ambiente parecer "impossível" (testou isolado e funcionou, mas o serviço real continua falhando do mesmo jeito), vale checar se existe algum artefato (`.venv`, `node_modules`, cache de build) que possa ter sido gerado pelo SO errado.
+
+**Status: RESOLVIDO (2026-06-24).** Confirmado pelo usuário — após esperar o setup inicial (import/compile das libs do Google), o `uvicorn` subiu normalmente sob `networkingMode=mirrored`, sem travar de verdade (era só lentidão pontual, como suspeitado). Daqui em diante, `http://localhost:8080` funciona direto no navegador Windows, sem precisar mais descobrir o IP do WSL via `hostname -I` a cada reinício. Item fechado.
