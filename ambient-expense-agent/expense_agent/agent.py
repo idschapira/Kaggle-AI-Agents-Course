@@ -48,16 +48,16 @@ import base64
 import binascii
 import json
 import logging
+import os
 import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from google.adk.agents import LlmAgent
+import google.genai as genai
 from google.adk.agents.context import Context
 from google.adk.apps import App, ResumabilityConfig
 from google.adk.events import Event, RequestInput
-from google.adk.models import Gemini
 from google.genai import types as genai_types
 from google.adk.workflow import START, Workflow, node
 
@@ -329,21 +329,45 @@ def security_screen(expense: dict) -> Event:
 # Step 2b - the only node that touches the LLM, and only for risk judgment
 # ---------------------------------------------------------------------------
 
-review_agent = LlmAgent(
-    name="review_agent",
-    model=Gemini(model=config.RISK_REVIEW_MODEL),
-    instruction=(
-        "You are a financial-risk reviewer for employee expense reports. "
-        "You will receive one expense report as JSON (amount_usd, submitter, "
-        "category, description, date). Judge it for risk factors only - "
-        "things like a vague description, a category/description mismatch, "
-        "an amount suspiciously close to an approval limit, or an unusual "
-        "date. You never approve or reject anything yourself; a human makes "
-        "that call after reading your assessment."
-    ),
-    output_schema=RiskAssessment,
-    output_key="risk_assessment",
+_REVIEW_INSTRUCTION = (
+    "You are a financial-risk reviewer for employee expense reports. "
+    "You will receive one expense report as JSON (amount_usd, submitter, "
+    "category, description, date). Judge it for risk factors only - "
+    "things like a vague description, a category/description mismatch, "
+    "an amount suspiciously close to an approval limit, or an unusual "
+    "date. You never approve or reject anything yourself; a human makes "
+    "that call after reading your assessment."
 )
+
+
+@node
+def review_agent(expense: dict) -> Event:
+    # Uses the sync genai client (requests, not aiohttp) to avoid the
+    # "Future attached to a different loop" crash that LlmAgent causes when
+    # Agent Runtime runs stream_query in a new asyncio.run() thread.
+    #
+    # Client selection: Vertex AI in Agent Runtime (no API key present),
+    # AI Studio locally (GOOGLE_API_KEY set in .env). Explicit project/location
+    # avoids the Cloud Resource Manager API lookup that would fail if that API
+    # is not enabled in the project.
+    if os.environ.get("GOOGLE_API_KEY"):
+        client = genai.Client()
+    else:
+        client = genai.Client(
+            vertexai=True,
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT", "kaggle-dia5-agent-runtime"),
+            location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-east1"),
+        )
+    response = client.models.generate_content(
+        model=config.RISK_REVIEW_MODEL,
+        contents=f"{_REVIEW_INSTRUCTION}\n\n{json.dumps(expense)}",
+        config=genai.types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=RiskAssessment,
+        ),
+    )
+    risk_data = json.loads(response.text)
+    return Event(output=risk_data, state={"risk_assessment": risk_data})
 
 
 # ---------------------------------------------------------------------------

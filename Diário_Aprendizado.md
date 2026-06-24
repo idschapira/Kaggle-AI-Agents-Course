@@ -717,3 +717,109 @@ Depuração longa, em etapas, até achar a causa raiz verdadeira (registrando o 
 **Lição:** nem todo 502 tem a mesma causa — mesmo sintoma (502 em `/api/pending`), causas completamente diferentes em dois deploys (Seção 3: ambiente Windows/WSL misturado; Seção 4: erro de digitação num ID de 19 dígitos). Sempre puxar o corpo de erro real (`curl`/logs) antes de reaplicar uma hipótese só porque "deu o mesmo número de erro" antes.
 
 **Status:** Seção 4 concluída — dashboard publicado e funcionando em `https://expense-manager-dashboard-17805413958.us-east1.run.app`. Próximo passo: Seção 5 (criar os tópicos Pub/Sub `expense-reports` e `expense-reports-dead-letter`).
+
+### Seção 5 (concluída) — Tópicos Pub/Sub
+
+Criados via `gcloud pubsub topics create`, sem incidentes:
+- `expense-reports` (projeto `kaggle-dia5-agent-runtime`) — tópico principal, onde despesas serão publicadas.
+- `expense-reports-dead-letter` — destino de mensagens que falharem repetidamente (limite configurado na subscription, Seção 6).
+
+Etapa pura de infraestrutura (nenhum arquivo de código alterado) — sem commit de código necessário, só este registro no Diário.
+
+**Status:** Seção 5 concluída. Próximo passo: Seção 6 (service account `pubsub-invoker` + subscription push OIDC `expense-reports-push` ligando o tópico ao Agent Runtime).
+
+### Seção 6 (concluída) — Pub/Sub ligado direto ao Agent Runtime (push OIDC, sem intermediário)
+
+6 comandos `gcloud`, executados em ordem (sem incidentes):
+1. `iam service-accounts create pubsub-invoker` — identidade dedicada do pipeline.
+2. `roles/aiplatform.user` concedido ao `pubsub-invoker` no projeto — sem isso, o token chega mas a chamada ao `:query` do Agent Runtime cai em 403.
+3. `roles/iam.serviceAccountTokenCreator` concedido ao service agent gerenciado do Pub/Sub (`service-17805413958@gcp-sa-pubsub.iam.gserviceaccount.com`) sobre o `pubsub-invoker` — permite o Pub/Sub assinar tokens OIDC em nome dele.
+4. `roles/pubsub.publisher` no tópico `expense-reports-dead-letter`, concedido ao mesmo service agent — sem isso, mensagens que deveriam ir pro DLT simplesmente desaparecem (falha silenciosa).
+5. `pubsub subscriptions create expense-reports-push` — a subscription em si: `--push-endpoint` apontando direto pro `:query` REST do Agent Runtime, `--push-auth-service-account pubsub-invoker`, `--push-no-wrapper` (entrega o payload puro, sem envelope do Pub/Sub), `--ack-deadline 600` (10min, pro agente ter tempo de raciocinar/pausar em HITL sem reentrega duplicada), `--dead-letter-topic` + `--max-delivery-attempts 5`.
+6. `roles/pubsub.subscriber` na subscription recém-criada, concedido ao service agent — necessário pra ele poder dar ack na mensagem original ao desviá-la pro DLT (só pôde ser concedido depois do passo 5, porque a subscription precisa existir primeiro).
+
+Etapa só de infraestrutura — sem código alterado, sem commit necessário.
+
+**Status:** pipeline completo: publish em `expense-reports` → push OIDC autenticado direto no Agent Runtime → falhas repetidas (5x) vão pro `expense-reports-dead-letter`. Próximo passo: Seção 8 (testes end-to-end via `gcloud pubsub topics publish`, rodados manualmente pelo usuário no terminal — auto-aprovação, escalonamento pra manager, e tentativa de prompt injection).
+
+### Seção 8 (em andamento) — Teste end-to-end: bug aberto, método `query` não registrado no Agent Runtime
+
+**Teste 1 (auto-aprovação, $45):** publicado via `gcloud pubsub topics publish expense-reports` no terminal. Nada apareceu no dashboard — mas, em vez de assumir sucesso (lição já aprendida: "tela vazia" é ambíguo, pode ser sucesso OU mensagem nunca processada), confirmamos via `gcloud logging read 'resource.type="aiplatform.googleapis.com/ReasoningEngine"'`.
+
+**Resultado do log: erro real, não sucesso silencioso.** Toda tentativa de push terminou em:
+```
+app.api.factory.utils.InvocationMethodNotFoundError: Default method `query` not found.
+Available methods are: ['async_search_memory', 'list_sessions', 'register_feedback',
+'async_create_session', 'get_session', 'async_list_sessions', 'async_add_session_to_memory',
+'create_session', 'delete_session', 'async_delete_session', 'async_get_session']
+```
+seguido de `POST /api/reasoning_engine HTTP/1.1" 404 Not Found` (múltiplas tentativas — provavelmente as reentregas automáticas do Pub/Sub até estourar `--max-delivery-attempts 5` e ir pro dead-letter).
+
+**Diagnóstico:** a autenticação OIDC da subscription funcionou (sem erro 403) — o problema é que o Agent Runtime, do jeito que foi implantado, **não tem nenhum método de invocação tipo `query`/`stream_query` registrado**, só métodos de gestão de sessão/memória. A push subscription da Seção 6 aponta pro endpoint `:query` (conforme instruído pelo próprio codelab), mas esse verbo não existe na superfície atual do agente.
+
+**Causa raiz encontrada:** `AdkApp.register_operations()` organiza os métodos do agente em "buckets" (`""`, `stream`, `async`, `async_stream`), e cada bucket mapeia pra um endpoint REST diferente no Agent Runtime:
+| Bucket | Endpoint REST |
+|---|---|
+| `""` (operações de sessão: `get_session`, `list_sessions`, etc. + `register_feedback`) | `:query` |
+| `stream` (`stream_query`) | `:streamQuery` |
+| `async_stream` (`async_stream_query`, `streaming_agent_run_with_events`) | `:asyncStreamQuery` (aprox.) |
+
+O bucket `""` nunca teve um método de invocação de verdade nessa versão do ADK — só operações de gestão de sessão. O método de invocação real é `stream_query`, no bucket `stream` → endpoint `:streamQuery`. **Fix:** subscription `expense-reports-push` recriada com `--push-endpoint` apontando pra `:streamQuery` em vez de `:query`.
+
+**Verificação (lição "tela vazia não é confirmação" aplicada de novo):** depois do fix, publicada uma despesa de teste ($45, auto-aprovação) via `gcloud pubsub topics publish` no terminal (conforme o codelab pede — simular um sistema externo publicando de verdade). Log do `ReasoningEngine` confirmou processamento real:
+```
+Expense outcome | submitter=ilan amount=45.00 approved=True by=system
+comment=Auto-approved: $45.00 is under the $100.00 threshold.
+redacted=none injection_detected=False
+```
+chamada em `/api/stream_reasoning_engine` retornando `200 OK`. Curiosidade: a sessão **não aparece** via `list_sessions` pra esse caso — caminho de auto-aprovação completa o grafo sem pausa de HITL, e o Agent Runtime parece usar sessão efêmera (não persistida) quando não há `RequestInput`. Confirmação correta veio do **log de outcome**, não da listagem de sessões.
+
+**Status: Teste 1 (auto-aprovação) RESOLVIDO e confirmado.** Pipeline Pub/Sub → Agent Runtime validado ponta a ponta para despesas abaixo de $100. Próximo: Teste 2 — despesa ≥$100 (Alice, $250, viagem), validando pausa HITL e aparição no dashboard Cloud Run.
+
+**Achado novo sobre o formato do payload:** o wrapper `{"input": {...}}` no nível raiz é exigido pelo **proxy da API do Vertex AI** (camada antes do container do agente), independente do endpoint (`:query` ou `:streamQuery`) — sem ele, erro 400 "Unknown name 'message'/'user_id': Cannot find field" antes de qualquer código do agente rodar. Dentro do `input`, vão `message` (string JSON da despesa) e `user_id`. Formato confirmado funcionando:
+```json
+{"input": {"message": "{\"amount\": 45, ...}", "user_id": "pubsub-trigger"}}
+```
+
+**Teste 2 (escalonamento, Alice $250) — em andamento, bug de backoff acumulado.** Publicada a mensagem (`messageId: 20519132899110410`) com `user_id: "pubsub-trigger"`, formato correto confirmado. Nada apareceu no dashboard nem em `list_sessions` (checado pra `default-user` e `pubsub-trigger`) — mas, em vez de assumir falha, confirmamos via **Console GCP → Agent Platform → Deployments → ambient-expense-agent → Sessões**: lista completa de sessões recentes, sem filtro de `user_id`, e **nenhuma sessão nova** apareceu (a mais recente era de um teste anterior, sem relação). Isso eliminou a hipótese "rodou mas não logou" (que valeu pro teste 1) — aqui realmente não rodou.
+
+Checagem adicional via logs de `pubsub_subscription` (entrega) + tópico `expense-reports-dead-letter` (vazio) + `ReasoningEngine` (sem entrada nova): nenhum HTTP status registrado pra essa entrega — a mensagem não chegou a ser entregue ainda.
+
+**Hipótese atual:** backoff exponencial acumulado na subscription `expense-reports-push`, herdado das tentativas anteriores que falharam (o período em que a subscription ainda apontava pro `:query` 404, e os testes com payload no formato errado). Pub/Sub pode esperar até ~600s (10min, o máximo padrão) antes da próxima tentativa de entrega. Verificação sugerida: Console → Pub/Sub → Subscriptions → `expense-reports-push` → métrica `num_undelivered_messages`.
+
+**Status:** aguardando o backoff expirar (alguns minutos) pra confirmar se a entrega acontece sozinha, ou se há um problema mais profundo.
+
+---
+
+## Seção 8 (concluída) — Resultado final dos testes end-to-end
+
+**Bug 3 — `--push-no-wrapper` perdido ao atualizar a subscription.** Ao trocar o endpoint pra `:streamQuery` via `modify-push-config`, o flag `--push-no-wrapper` não foi preservado — o Pub/Sub voltou a embrulhar a mensagem no envelope padrão, que o Agent Runtime não sabe interpretar (erro 400 silencioso, visível só no gráfico de métricas "Contagem de solicitações de push" → `url_4xx_error_400`, não nos logs do `ReasoningEngine`). **Fix:** deletar e recriar a subscription do zero, já com endpoint + OIDC + `--push-no-wrapper` juntos no mesmo comando, em vez de usar `modify-push-config` incremental.
+
+**Bug 4 — `RuntimeError: Future attached to a different loop` (asyncio).** Causa raiz: o `review_agent` (um `LlmAgent` do ADK) cria um `aiohttp.ClientSession` vinculado ao event loop ativo no momento da criação. O Agent Runtime roda `stream_query` numa **thread separada com seu próprio `asyncio.run()`** — um event loop diferente do que existia quando o agente foi montado. Quando o fluxo de aprovação chega no `$250` (escalonamento, que chama o Gemini de novo via `review_agent`), o `ClientSession` tenta operar no loop errado e quebra. O `$45` (auto-aprovação) nunca quebrou porque nunca chama o `review_agent`. **Fix:** substituir o `LlmAgent` assíncrono por uma função `@node` síncrona, usando `client.models.generate_content()` (biblioteca `requests`, sem `aiohttp`, sem event loop pra conflitar). Trade-off: perdemos a validação automática de schema do `LlmAgent` — agora o parsing da resposta do Gemini é manual (`json.loads`), então um JSON malformado quebraria com erro menos claro.
+
+**Bug 5 — `PermissionDenied: Cloud Resource Manager API not enabled`.** Ao forçar `GOOGLE_GENAI_USE_VERTEXAI=TRUE` antes do `vertexai.init()`, isso ativou um code path que tenta resolver o project number pro project ID via Cloud Resource Manager API (desabilitada no projeto) — aparecia como warning no log de início do container, mas não chegou a bloquear as chamadas reais (ambas as tentativas seguintes tiveram `200 OK`). Mesmo assim, **fix aplicado:** construir o client do Vertex AI explicitamente com `project`/`location`, em vez de depender da variável de ambiente + resolução implícita — mais robusto.
+
+**Bug 6 — mismatch de `user_id` entre o payload de teste e o dashboard.** O dashboard (`main.py`) tem `USER_ID = "default-user"` hardcoded — só lista/resolve sessões desse usuário. Mensagens publicadas manualmente com `"user_id": "pubsub-trigger"` criavam sessões reais e funcionais (confirmadas via Console → Sessões, e via Playground mostrando o evento `adk_request_input` da pausa HITL), mas invisíveis no dashboard. **Fix de teste:** publicar com `"user_id": "default-user"` pra bater com o que o dashboard espera. **Nota de produção:** isso é uma limitação de design do codelab (single-user demo) — um sistema real listaria sessões de qualquer submissor pro aprovador, não um único ID fixo.
+
+**Resultado final:**
+- **Teste 1** ($45, Bob, auto-aprovação) — ✅ confirmado via log de outcome.
+- **Teste 2** ($250, Alice, escalonamento/HITL) — ✅ confirmado via Console Playground (evento `adk_request_input` pausado) e depois via dashboard (card "Pending Review" com Approve/Reject, aprovado manualmente com sucesso).
+- **Teste 3** (injeção de prompt, $1.000.000) — não executado, pulado por decisão do usuário após a extensa depuração dos bugs 3-6.
+
+**Lição central:** três bugs (3, 4, 5) tinham o mesmo sintoma superficial ("nada aparece, sem erro óbvio") mas causas completamente diferentes — configuração de subscription, arquitetura assíncrona do Python, e permissão de API. Reforça a disciplina já registrada no curso: nunca concluir causa a partir do sintoma, sempre seguir até o log/traceback completo.
+
+---
+
+## Seção 9 (concluída) — Cleanup dos recursos GCP
+
+Decisão: como o capstone será um projeto totalmente diferente (derivado do app Pokémon do Dia 1), removemos **tudo** relacionado ao `ambient-expense-agent`, incluindo o próprio deployment do Agent Runtime (diferente do plano original do codelab, que só removeria a infraestrutura do frontend).
+
+Recursos deletados:
+- Cloud Run `expense-manager-dashboard`
+- Pub/Sub subscriptions: `expense-reports-push`, `expense-reports-dead-letter-sub`
+- Pub/Sub topics: `expense-reports`, `expense-reports-dead-letter`
+- Service account `pubsub-invoker@kaggle-dia5-agent-runtime.iam.gserviceaccount.com`
+- Agent Runtime / Reasoning Engine `ambient-expense-agent` (id `1821600496155099136`, us-east1) — deletado com `force=true` pra limpar sessões filhas
+- Imagem Docker `expense-manager-dashboard` no Artifact Registry (repositório `cloud-run-source-deploy` mantido, é compartilhado e pode ser reaproveitado por outros deploys no mesmo projeto)
+
+**Status: Seção 8 e Seção 9 CONCLUÍDAS (2026-06-24).** Ambiente limpo, projeto GCP `kaggle-dia5-agent-runtime` sem recursos cobráveis ativos do `ambient-expense-agent`. Próximo passo: capstone (derivado do Pokémon do Dia 1).
