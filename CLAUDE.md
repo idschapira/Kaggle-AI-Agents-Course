@@ -1,27 +1,10 @@
-## Regras do Capstone (LER ANTES de trabalhar no projeto final)
-As regras oficiais completas estão em `Regras_Capstone.md` (raiz desta pasta) —
-leia esse arquivo antes de qualquer decisão sobre a submissão final. Resumo das
-regras inquebráveis:
-
-- **Hackathon = 1 (uma) submissão por equipe.** "Salvar" ≠ "Submeter": clicar em
-  **Submit** na Writeup antes do prazo. Rascunhos não são avaliados.
-- **Submissão válida = Kaggle Writeup** (≤2.500 palavras) + 3 anexos obrigatórios:
-  **imagem de capa**, **vídeo no YouTube (≤5 min)** e **link público** (demo OU
-  repositório GitHub com README + setup).
-- **Demonstrar ≥3 conceitos do curso:** Agent/Multi-agent (ADK), MCP Server,
-  Antigravity, Security, Deployability, Agent skills (Agents CLI). Uso de agentes
-  deve ser claro, central e significativo.
-- **Selecionar 1 das 4 tracks** é obrigatório para submeter.
-- 🚨 **NENHUMA chave de API ou senha no código/submissão.**
-- **Prazo:** confirmar na aba *Overview > Timeline* da competição (~06/07/2026 PT,
-  a verificar — não confiar na memória).
-
-### Ferramentas externas (Claude Code, Cursor, Copilot etc.)
-Permitido usar ferramentas além do codelab para *construir* o projeto (Seção 2.6
-das regras: não proibidas pelo Host + custo razoável/acessível a todos). MAS:
-ferramenta de build ≠ conceito avaliado — a submissão ainda precisa **conter e
-mostrar** os ≥3 conceitos do curso. Código open-source reaproveitado só sob
-licença OSI.
+## Capstone — vive em repositório próprio
+O projeto final (**PokéPortfolio AI**) está no repo separado `pokeportfolio-ai`
+(pasta irmã desta), com seu próprio `CLAUDE.md` e docs em `_mentoria/`
+(`Regras_Capstone.md`, `Diário_Capstone.md`, etc.). Ao trabalhar no capstone, abra
+**as duas pastas** no Cowork. As regras do hackathon e o progresso do projeto ficam
+lá; este repo guarda o aprendizado geral do curso.
+🚨 Regra que vale em qualquer repo: **NENHUMA chave de API ou senha no código.**
 
 ## Segurança — regra inegociável (a regra mais importante deste projeto)
 Nunca peça para o usuário colar, digitar ou exibir uma chave de API, token ou
@@ -46,27 +29,24 @@ revogar em https://aistudio.google.com/apikey antes de gerar outra.
 > Passo a passo manual de login (`agents-cli` e ADC/`gcloud`), split WSL/Windows
 > e troubleshooting: ver **`AUTENTICACAO.md`**.
 
-## Ao encontrar um bug — buscar nos Diários ANTES de debugar
-Antes de investigar qualquer erro do zero, procure **nos dois diários** se já
+## Ao encontrar um bug — buscar no Diário ANTES de debugar
+Antes de investigar qualquer erro do zero, procure no `Diário_Aprendizado.md` se já
 enfrentamos algo parecido (API drift de libs, peculiaridades Windows/WSL, auth,
-deploy etc.) e reaplique a solução documentada. **Ambos valem durante o capstone:**
-o `Diário_Aprendizado.md` concentra as lições técnicas do curso (que reaparecem ao
-construir o projeto) e o `Diário_Capstone.md` registra o que é específico do projeto
-final. Só parta para investigação nova se não houver registro em nenhum dos dois. Ao
-resolver um bug inédito, registre a causa e a solução no diário correspondente
-(técnico → Aprendizado; específico do projeto → Capstone) para a próxima vez.
+deploy etc.) e reaplique a solução documentada. Só parta para investigação nova se
+não houver registro. Bug novo → registre causa e solução aqui para a próxima vez.
+(No capstone, este diário é consultado a partir de uma cópia em
+`pokeportfolio-ai/_mentoria/`.)
 
 ## Contexto do projeto
 Curso: Kaggle "5-Day AI Agents". Progresso completo em `Diário_Aprendizado.md`
 (raiz) — leia antes de qualquer tarefa nova para entender o que já foi feito,
 decisões tomadas e bugs/lições resolvidos.
 
-Projeto do capstone: **PokéPortfolio AI** — agente Concierge que cadastra cartas
-Pokémon por texto livre. Decisões, escopo e progresso em `Diário_Capstone.md`
-(raiz) — leia antes de qualquer tarefa do projeto final. Resumo: track Concierge,
-single-user, input só texto no MVP, fonte de dados pokewallet.io/pokemontcg.io
-(a definir), persistência Firestore, submissão em inglês; demonstra ADK, MCP,
-Security, Deployability e Agents CLI.
+Projeto do capstone: **PokéPortfolio AI** — vive no repo `pokeportfolio-ai` (pasta
+irmã), com seu próprio `CLAUDE.md` e docs em `_mentoria/`. Resumo: agente Concierge
+que cadastra cartas Pokémon por texto livre; single-user, input só texto no MVP,
+fonte pokewallet.io/pokemontcg.io (a definir), persistência Firestore, submissão em
+inglês; demonstra ADK, MCP, Security, Deployability e Agents CLI.
 
 Projeto GCP atual: `kaggle-dia5-agent-runtime` (billing ativo; APIs: aiplatform,
 cloudtrace, cloudbuild, agentregistry, run, artifactregistry).
