@@ -46,17 +46,27 @@ revogar em https://aistudio.google.com/apikey antes de gerar outra.
 > Passo a passo manual de login (`agents-cli` e ADC/`gcloud`), split WSL/Windows
 > e troubleshooting: ver **`AUTENTICACAO.md`**.
 
-## Ao encontrar um bug — buscar no Diário ANTES de debugar
-Antes de investigar qualquer erro do zero, procure no `Diário_Aprendizado.md` se
-já enfrentamos algo parecido (API drift de libs, peculiaridades Windows/WSL, auth,
-deploy etc.) e reaplique a solução documentada. Só parta para investigação nova se
-não houver registro. Ao resolver um bug inédito, registre a causa e a solução no
-Diário para a próxima vez.
+## Ao encontrar um bug — buscar nos Diários ANTES de debugar
+Antes de investigar qualquer erro do zero, procure **nos dois diários** se já
+enfrentamos algo parecido (API drift de libs, peculiaridades Windows/WSL, auth,
+deploy etc.) e reaplique a solução documentada. **Ambos valem durante o capstone:**
+o `Diário_Aprendizado.md` concentra as lições técnicas do curso (que reaparecem ao
+construir o projeto) e o `Diário_Capstone.md` registra o que é específico do projeto
+final. Só parta para investigação nova se não houver registro em nenhum dos dois. Ao
+resolver um bug inédito, registre a causa e a solução no diário correspondente
+(técnico → Aprendizado; específico do projeto → Capstone) para a próxima vez.
 
 ## Contexto do projeto
 Curso: Kaggle "5-Day AI Agents". Progresso completo em `Diário_Aprendizado.md`
 (raiz) — leia antes de qualquer tarefa nova para entender o que já foi feito,
 decisões tomadas e bugs/lições resolvidos.
+
+Projeto do capstone: **PokéPortfolio AI** — agente Concierge que cadastra cartas
+Pokémon por texto livre. Decisões, escopo e progresso em `Diário_Capstone.md`
+(raiz) — leia antes de qualquer tarefa do projeto final. Resumo: track Concierge,
+single-user, input só texto no MVP, fonte de dados pokewallet.io/pokemontcg.io
+(a definir), persistência Firestore, submissão em inglês; demonstra ADK, MCP,
+Security, Deployability e Agents CLI.
 
 Projeto GCP atual: `kaggle-dia5-agent-runtime` (billing ativo; APIs: aiplatform,
 cloudtrace, cloudbuild, agentregistry, run, artifactregistry).
